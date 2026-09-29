@@ -18,18 +18,20 @@
 ## Agent roles → OpenSWE
 - Planner   → OpenSWE planning phase. Read-only over code. Output: req/test/impl
               specs + artifacts/plans/<feature>.json conforming to execution_plan.schema.json.
+              Presents the plan at Human Gate 2 in chat and waits for approval. Does NOT open a PR.
 - Coder     → OpenSWE Programmer phase. TDD Red→Green. Obey domain_invariants.md.
-- Reviewer  → Programmer subagent via the `task` tool. DISCOVERY-ONLY, never edits
+              Carries out implementation once the plan is approved, runs Gate B & Gate C, and opens the feature PR.
+- Reviewer  → Reviewer skill or auditor. DISCOVERY-ONLY, never edits
               code. Output conforms to review_findings.schema.json. Mode A (audit)
               and Mode B (PR-comment triage) per reviewer-protocol.md.
 - Closer & Scribe → SKIPPED for this demo (post-merge Jira/RFC/DAG). Do not run.
 
 ## Gate mapping
-- Human Gate 2 (approve plan/spec)   → OpenSWE built-in plan-approval interrupt.
-- Machine Gate B (traceability/DAG)  → CI .github/workflows/gate-b.yml (bin/gate_b_verifier.py).
-- Machine Gate C (build/test/cover)  → CI .github/workflows/gate-c-ci.yml.
-- Human Gate 3 (merge)               → GitHub branch protection (required checks: gate-b, gate-c).
-- Session Continuation               → continue in the same thread.
+- Human Gate 2 (approve plan/spec)   → OpenSWE in-chat plan approval. Planner presents the plan card and awaits user sign-off.
+- Machine Gate B (traceability/DAG)  → Pre-PR local check & CI .github/workflows/gate-b.yml (bin/gate_b_verifier.py).
+- Machine Gate C (build/test/cover)  → Pre-PR local check & CI .github/workflows/gate-c-ci.yml.
+- Human Gate 3 (merge)               → GitHub PR review & branch protection (required checks: gate-b, gate-c).
+- Session Continuation               → continue in the same thread (Planner ➔ Coder handoff upon approval).
 - Fresh Session                      → start a new task for a new feature.
 
 ## Gate B input binding & Date-Prefixed Naming (REQUIRED)
@@ -39,19 +41,24 @@ To prevent naming collisions as features accumulate, ALL specification documents
 - ImplSpec:     `specs/impls/YYYY-MM-DD-<domain>-<feature>.md`
 - ExecutionPlan: `artifacts/plans/YYYY-MM-DD-<feature>.json`
 
-## Atomic Stage 1 PR Invariant (Protocol Rule)
-A Stage 1 PR MUST NOT be opened incrementally with missing spec files. Opening a PR with missing files immediately causes Gate B CI failure.
-The Planner Agent MUST:
-1. Complete all 4 documents above in the local sandbox workspace.
-2. Run local pre-PR verification:
-   `python bin/gate_b_verifier.py specs/reqs/*.md specs/tests/*/*.md specs/impls/*.md artifacts/plans/*.json`
-3. ONLY after local Gate B returns `PASS`, commit all 4 files and open the PR targeting `main`.
+## Continuous Single Responsibility PR Workflow
+Instead of opening an intermediate spec-only PR that blocks progress, the lifecycle follows a seamless, continuous flow:
+1. **Planning Phase (`/planner`)**:
+   - Parse TRD, explore AST, and formulate date-prefixed specs and `execution_plan.json`.
+   - Run local Gate B pre-check:
+     `python bin/gate_b_verifier.py specs/reqs/*.md specs/tests/*/*.md specs/impls/*.md artifacts/plans/*.json`
+   - Present the **Human Gate 2 Summary Card** (Scope, Domain, Test Scenarios with Violation Signals, and DAG) to the user in chat.
+   - **DO NOT open a GitHub PR in the Planner phase.** Await user approval.
+2. **Implementation Phase (`/coder`)**:
+   - Triggered when user approves the plan ("Approved", "Setuju") or runs `/coder <plan_path>`.
+   - Checkout branch `feat/<domain>-<feature>` (or stacked branches if > 500 LOC per RULE-PLAN-004).
+   - Write spec files and proceed with strict TDD (Phase Red: scaffold failing tests ➔ Phase Green: implement minimal clean architecture).
+   - Verify Gate B (`bin/gate_b_verifier.py`) and Gate C (`go test -v -race ./...` & `golangci-lint`).
+   - Commit and open the Feature Pull Request (containing specs + implementation + tests).
+   - Present PR link for Human Gate 3 merge review.
 
-## Two-stage flow
-1. Stage 1 (spec): branch `spec/<id>` → commit all 4 date-prefixed spec files atomically → open PR → gate-b + human review → merge.
-2. Stage 2 (impl): branch `feat/<id>` → TDD implementation → open PR → gate-c + human review → merge.
+## Runtime notes
+- Subagents: Do NOT invoke external subagent tools like `task` if subagent provider API keys are unset; execute steps directly within the session.
+- Collision Guard: Disjoint file sets enforced by Gate B verifier (`RULE-PLAN-007` and File Collision Guard).
+- Worktrees: OpenSWE manages its own sandboxes.
 
-## Runtime notes (no direct OpenSWE equivalent)
-- orchestrator.sh STEP 2.0 auto-serialize → none. Rely on Planner discipline plus
-  the File Collision Guard pre-check in Gate B.
-- `.omp/wt/` worktree pruning → N/A; OpenSWE manages its own sandboxes.
