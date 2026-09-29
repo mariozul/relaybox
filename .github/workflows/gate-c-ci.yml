@@ -38,6 +38,6 @@ jobs:
             'BEGIN { exit (c+0 >= min+0) ? 0 : 1 }' \
             || { echo "::error::coverage ${total}% is below ${COVERAGE_MIN}% threshold"; exit 1; }
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.1.0
