@@ -7,6 +7,7 @@
 > `docs/rules/*` wins.
 
 ## Canonical sources (READ before acting)
+- TRDs / Product Req → docs/trd/*.md (multi-version TRDs for roadmap & features)
 - Domain invariants  → docs/rules/domain_invariants.md (RULE-ARCH/DATA/RES/SEC/EVT/OBS)
 - Spec decomposition → docs/rules/spec_decomposition_rules.md (RULE-REQ/TEST/IMPL/PLAN + Gate B)
 - Reviewer protocol  → docs/rules/reviewer-protocol.md (RULE-REV)
@@ -31,21 +32,24 @@
 - Session Continuation               → continue in the same thread.
 - Fresh Session                      → start a new task for a new feature.
 
-## Gate B input binding (REQUIRED so CI has the files)
-Stage 1 MUST write the ingested TRD to specs/reqs/<domain>-<feature>.md
-(even for a Mini-TRD / dual-duty input), and write the plan to
-artifacts/plans/<feature>.json, so gate-b CI can resolve all four inputs
-(TRD, testspec, implspec, plan) matching .github/workflows/gate-b.yml:
-- TRD: specs/reqs/<domain>-<feature>.md
-- TestSpec: specs/tests/<domain>/spec.md
-- ImplSpec: specs/impls/<domain>-<feature>.md
-- Plan: artifacts/plans/<feature>.json
+## Gate B input binding & Date-Prefixed Naming (REQUIRED)
+To prevent naming collisions as features accumulate, ALL specification documents and execution plans MUST be prefixed with the generation date (`YYYY-MM-DD-`):
+- TRD / ReqSpec: `specs/reqs/YYYY-MM-DD-<domain>-<feature>.md`
+- TestSpec:     `specs/tests/<domain>/YYYY-MM-DD-spec.md` (or `specs/tests/YYYY-MM-DD-<domain>-spec.md`)
+- ImplSpec:     `specs/impls/YYYY-MM-DD-<domain>-<feature>.md`
+- ExecutionPlan: `artifacts/plans/YYYY-MM-DD-<feature>.json`
+
+## Atomic Stage 1 PR Invariant (Protocol Rule)
+A Stage 1 PR MUST NOT be opened incrementally with missing spec files. Opening a PR with missing files immediately causes Gate B CI failure.
+The Planner Agent MUST:
+1. Complete all 4 documents above in the local sandbox workspace.
+2. Run local pre-PR verification:
+   `python bin/gate_b_verifier.py specs/reqs/*.md specs/tests/*/*.md specs/impls/*.md artifacts/plans/*.json`
+3. ONLY after local Gate B returns `PASS`, commit all 4 files and open the PR targeting `main`.
 
 ## Two-stage flow
-1. Stage 1 (spec): branch `spec/<id>` → commit specs/reqs + specs/tests + specs/impls +
-   artifacts/plans/<feature>.json → open PR → gate-b + human review → merge.
-2. Stage 2 (impl): branch `feat/<id>` → TDD implementation → open PR → gate-c +
-   human review → merge.
+1. Stage 1 (spec): branch `spec/<id>` → commit all 4 date-prefixed spec files atomically → open PR → gate-b + human review → merge.
+2. Stage 2 (impl): branch `feat/<id>` → TDD implementation → open PR → gate-c + human review → merge.
 
 ## Runtime notes (no direct OpenSWE equivalent)
 - orchestrator.sh STEP 2.0 auto-serialize → none. Rely on Planner discipline plus
