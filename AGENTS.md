@@ -32,14 +32,14 @@
 - Fresh Session                      → start a new task for a new feature.
 
 ## Gate B input binding (REQUIRED so CI has the files)
-Stage 1 MUST write the ingested TRD to docs/reqspecs/<domain>-<feature>.md
+Stage 1 MUST write the ingested TRD to spec/req/<domain>-<feature>.md
 (even for a Mini-TRD / dual-duty input), and write the plan to
 artifacts/plans/<feature>.json, so gate-b CI can resolve all four inputs
 (TRD, testspec, implspec, plan).
 
 ## Two-stage flow
-1. Stage 1 (spec): branch `spec/<id>` → commit reqspec + testspec + implspec +
-   plan.json → open PR → gate-b + human review → merge.
+1. Stage 1 (spec): branch `spec/<id>` → commit spec/req + spec/test + spec/impl +
+   artifacts/plans/<feature>.json → open PR → gate-b + human review → merge.
 2. Stage 2 (impl): branch `feat/<id>` → TDD implementation → open PR → gate-c +
    human review → merge.
 
