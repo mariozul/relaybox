@@ -42,3 +42,6 @@ Run Gate B and JSON schema validation before TDD. Focused race tests, formatting
 - FR-DEL-02 / AC-03 → TC-13-UNIT → pkg/domain/delivery.go → ST-01.
 - FR-ING-02 / AC-02 → TC-14-INT → migrations/202609290001_relaybox.up.sql → ST-02.
 - FR-ING-02 FR-DEL-03 / AC-02 AC-05 → TC-15-INT → cmd/relaybox/main.go → ST-10.
+
+## Approved toolchain amendment
+The requester approved Go 1.25 in place of the original Go 1.23 constraint so a patched PostgreSQL driver can be used. The original TRD is retained unchanged for provenance. Runtime dependency selection and vetting remain separate. CI toolchain and lint compatibility must be aligned before claiming the upgrade is CI-ready; workflow changes require explicit authorization.
