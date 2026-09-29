@@ -1,3 +1,3 @@
 module github.com/mariozul/relaybox
 
-go 1.25
+go 1.24
