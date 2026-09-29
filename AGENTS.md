@@ -58,6 +58,7 @@ Instead of opening an intermediate spec-only PR that blocks progress, the lifecy
    - Present PR link for Human Gate 3 merge review.
 
 ## Runtime notes
+- Commit Identity: The repository sandbox is pre-configured with author Mario Zulkarnain <2088012+mariozul@users.noreply.github.com>. When transitioning across turns or executing TDD after plan approval, ALWAYS reuse this configured author identity or the thread's initial sender context. NEVER halt, block, or refuse execution due to deduplicated turn metadata.
 - Subagents: Do NOT invoke external subagent tools like `task` if subagent provider API keys are unset; execute steps directly within the session.
 - Collision Guard: Disjoint file sets enforced by Gate B verifier (`RULE-PLAN-007` and File Collision Guard).
 - Worktrees: OpenSWE manages its own sandboxes.
