@@ -172,6 +172,23 @@ def validate_plan_schema_and_dag(plan_path: Path) -> Tuple[bool, List[str], Dict
             if dep == st_id:
                 errors.append(f"Subtask '{st_id}' cannot depend on itself.")
 
+    # RULE-PLAN-007: Single Responsibility Pull Request Invariant (SRP-PR)
+    # Validate that no pr_group contains subtasks from multiple distinct domains
+    pr_group_domains: Dict[str, Set[str]] = {}
+    for st in subtasks:
+        pr_grp = st.get("pr_group")
+        dom = st.get("domain")
+        if pr_grp and dom:
+            if pr_grp not in pr_group_domains:
+                pr_group_domains[pr_grp] = set()
+            pr_group_domains[pr_grp].add(dom)
+    for grp, doms in pr_group_domains.items():
+        if len(doms) > 1:
+            errors.append(
+                f"SRP PR Violation (RULE-PLAN-007): pr_group '{grp}' mixes multiple distinct domains: "
+                f"{', '.join(sorted(doms))}. Each PR must focus strictly on 1 domain."
+            )
+
     # DAG Cycle Detection using DFS
     visited = {}  # 0 = unvisited, 1 = visiting, 2 = visited
     for node in subtask_ids:

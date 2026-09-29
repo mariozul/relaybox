@@ -255,6 +255,19 @@ The Planner Agent decides whether `/req-to-reqspec` (Step 1, `docs/reqspecs/`) i
 }
 ```
 
+### 6.3. RULE-PLAN-007: Single Responsibility Pull Request Invariant (SRP-PR)
+
+Every Pull Request produced under this architecture **MUST strictly adhere to the Single Responsibility Principle (SRP)**:
+
+1. **One Bounded Context / Domain per PR (MANDATORY)**:
+   - A single PR must have **exactly one conceptual domain or functional topic** to change.
+   - Mingling changes across multiple distinct bounded contexts (e.g., `auth` and `relaybox`, or `billing` and `notification`) in a single PR is **STRICTLY PROHIBITED**, even if the total lines of code is very small ($< 500$ LOC).
+   - If a TRD spans multiple bounded contexts, the Planner Agent MUST decompose the execution plan into distinct domain PR tracks.
+2. **Reviewer Veto**:
+   - The Reviewer Agent MUST fail any PR audit that introduces cross-domain coupling or mixes unrelated functional concerns in a single changeset.
+3. **Rollback & Blast Radius Guarantee**:
+   - Isolating PRs per domain guarantees that any domain-specific bug or rollback can be executed without impacting independent subsystems.
+
 ---
 
 ## 7. Gate B: Machine Drift & Traceability Reconciliation Formula
