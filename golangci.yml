@@ -1,0 +1,52 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: standard
+  enable:
+    - bodyclose        # RULE-RES-03: resp.Body.Close()
+    - sqlclosecheck    # RULE-RES-03: rows/stmt Close()
+    - rowserrcheck     # RULE-RES-03: rows.Err()
+    - contextcheck     # RULE-RES-01: unbroken ctx propagation
+    - containedctx     # RULE-RES-01: no ctx stored in structs
+    - noctx            # RULE-RES-01/OBS: no HTTP calls without ctx
+    - forbidigo        # RULE-OBS-01 / RULE-RES-01: ban fmt.Print & context.Background/TODO
+    - gosec            # RULE-SEC: security scanning
+    - errorlint        # RULE-ARCH-03: correct error wrapping/sentinels
+    - errcheck
+    - revive
+    - gocritic
+    - misspell
+    - unconvert
+    - unparam
+  settings:
+    forbidigo:
+      forbid:
+        - pattern: '^fmt\.Print(ln|f)?$'
+          msg: "RULE-OBS-01: use structured logging (slog/zerolog), not fmt.Print*"
+        - pattern: '^context\.(Background|TODO)$'
+          msg: "RULE-RES-01: propagate ctx; do not create context.Background/TODO in service layers"
+      analyze-types: true
+    revive:
+      rules:
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: error-return
+        - name: error-naming
+    gosec:
+      excludes:
+        - G104   # handled by errcheck
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - forbidigo
+          - gosec
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
