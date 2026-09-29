@@ -20,15 +20,22 @@ jobs:
         id: paths
         run: |
           base="origin/${{ github.base_ref }}"
-          changed=$(git diff --name-only "$base"...HEAD)
-          pick() { echo "$changed" | grep -E "$1" | head -n1; }
-          TRD=$(pick '^specs/reqs/.*\.md$')
-          TESTSPEC=$(pick '^specs/tests/.*\.md$')
-          IMPLSPEC=$(pick '^specs/impls/.*\.md$')
-          PLAN=$(pick '^artifacts/plans/.*\.json$')
+          changed=$(git diff --name-only "$base"...HEAD 2>/dev/null || true)
+          pick() {
+            c=$(echo "$changed" | grep -E "$1" | head -n1)
+            if [ -n "$c" ] && [ -f "$c" ]; then
+              echo "$c"
+            else
+              find . -maxdepth 4 -path "./$2" 2>/dev/null | head -n1 | sed 's|^\./||'
+            fi
+          }
+          TRD=$(pick '^specs/reqs/.*\.md$' 'specs/reqs/*.md')
+          TESTSPEC=$(pick '^specs/tests/.*\.md$' 'specs/tests/*.md')
+          IMPLSPEC=$(pick '^specs/impls/.*\.md$' 'specs/impls/*.md')
+          PLAN=$(pick '^artifacts/plans/.*\.json$' 'artifacts/plans/*.json')
           for p in "TRD:$TRD" "TESTSPEC:$TESTSPEC" "IMPLSPEC:$IMPLSPEC" "PLAN:$PLAN"; do
             n=${p%%:*}; v=${p#*:}
-            [ -z "$v" ] && { echo "::error::Gate B: $n file not found in this PR"; exit 1; }
+            [ -z "$v" ] && { echo "::error::Gate B: $n file not found in this PR or workspace tree"; exit 1; }
           done
           {
             echo "trd=$TRD"; echo "testspec=$TESTSPEC"

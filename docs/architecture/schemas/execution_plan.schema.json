@@ -85,6 +85,14 @@
           "type": "string",
           "description": "Concise human-readable title of the subtask"
         },
+        "domain": {
+          "type": "string",
+          "description": "Bounded context or functional topic this subtask belongs to (RULE-PLAN-007 Single Responsibility Invariant)"
+        },
+        "pr_group": {
+          "type": "string",
+          "description": "Identifier of the target Pull Request grouping (e.g. PR-01, PR-AUTH-01) obeying RULE-PLAN-007"
+        },
         "layer": {
           "type": "string",
           "enum": ["domain", "repository", "service", "transport", "adapter", "config", "test", "cross_cutting"],
