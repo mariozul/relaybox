@@ -1,0 +1,41 @@
+name: gate-b-spec-traceability
+on:
+  pull_request:
+    paths:
+      - "docs/reqspecs/**"
+      - "docs/testspecs/**"
+      - "docs/implspecs/**"
+      - "artifacts/plans/**"
+jobs:
+  gate-b:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Resolve spec artifact paths from this PR
+        id: paths
+        run: |
+          base="origin/${{ github.base_ref }}"
+          changed=$(git diff --name-only "$base"... HEAD)
+          pick() { echo "$changed" | grep -E "$1" | head -n1; }
+          TRD=$(pick '^docs/reqspecs/.*\.md$')
+          TESTSPEC=$(pick '^docs/testspecs/.*\.md$')
+          IMPLSPEC=$(pick '^docs/implspecs/.*\.md$')
+          PLAN=$(pick '^artifacts/plans/.*\.json$')
+          for p in "TRD:$TRD" "TESTSPEC:$TESTSPEC" "IMPLSPEC:$IMPLSPEC" "PLAN:$PLAN"; do
+            n=${p%%:*}; v=${p#*:}
+            [ -z "$v" ] && { echo "::error::Gate B: $n file not found in this PR"; exit 1; }
+          done
+          {
+            echo "trd=$TRD"; echo "testspec=$TESTSPEC"
+            echo "implspec=$IMPLSPEC"; echo "plan=$PLAN"
+          } >> "$GITHUB_OUTPUT"
+      - name: Run Gate B verifier
+        run: |
+          python bin/gate_b_verifier.py \
+            "${{ steps.paths.outputs.trd }}" \
+            "${{ steps.paths.outputs.testspec }}" \
+            "${{ steps.paths.outputs.implspec }}" \
+            "${{ steps.paths.outputs.plan }}"
