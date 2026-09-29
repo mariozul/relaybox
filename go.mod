@@ -1,3 +1,3 @@
-module github.com/yourorg/relaybox
+module github.com/mariozul/relaybox
 
 go 1.23

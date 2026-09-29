@@ -2,9 +2,9 @@ name: gate-b-spec-traceability
 on:
   pull_request:
     paths:
-      - "docs/reqspecs/**"
-      - "docs/testspecs/**"
-      - "docs/implspecs/**"
+      - "specs/reqs/**"
+      - "specs/tests/**"
+      - "specs/impls/**"
       - "artifacts/plans/**"
 jobs:
   gate-b:
@@ -18,11 +18,11 @@ jobs:
         id: paths
         run: |
           base="origin/${{ github.base_ref }}"
-          changed=$(git diff --name-only "$base"... HEAD)
+          changed=$(git diff --name-only "$base"...HEAD)
           pick() { echo "$changed" | grep -E "$1" | head -n1; }
-          TRD=$(pick '^docs/reqspecs/.*\.md$')
-          TESTSPEC=$(pick '^docs/testspecs/.*\.md$')
-          IMPLSPEC=$(pick '^docs/implspecs/.*\.md$')
+          TRD=$(pick '^specs/reqs/.*\.md$')
+          TESTSPEC=$(pick '^specs/tests/.*\.md$')
+          IMPLSPEC=$(pick '^specs/impls/.*\.md$')
           PLAN=$(pick '^artifacts/plans/.*\.json$')
           for p in "TRD:$TRD" "TESTSPEC:$TESTSPEC" "IMPLSPEC:$IMPLSPEC" "PLAN:$PLAN"; do
             n=${p%%:*}; v=${p#*:}

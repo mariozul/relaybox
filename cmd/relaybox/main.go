@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yourorg/relaybox/internal/version"
+	"github.com/mariozul/relaybox/internal/version"
 )
 
 func main() {
