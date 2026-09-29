@@ -7,6 +7,7 @@
 > `docs/rules/*` wins.
 
 ## Canonical sources (READ before acting)
+- TRDs / Product Req → docs/trd/*.md (multi-version TRDs for roadmap & features)
 - Domain invariants  → docs/rules/domain_invariants.md (RULE-ARCH/DATA/RES/SEC/EVT/OBS)
 - Spec decomposition → docs/rules/spec_decomposition_rules.md (RULE-REQ/TEST/IMPL/PLAN + Gate B)
 - Reviewer protocol  → docs/rules/reviewer-protocol.md (RULE-REV)
