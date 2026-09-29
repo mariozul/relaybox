@@ -1,0 +1,272 @@
+{
+  "task_id": "RELAYBOX-DELIVERY",
+  "feature_name": "relaybox-delivery",
+  "blast_radius": "HIGH",
+  "reqspec_triage": {
+    "decision": "REQUIRED",
+    "bounded_contexts": [
+      "relaybox"
+    ],
+    "matrix_answers": {
+      "db_schema": "yes",
+      "api_contract": "yes",
+      "multi_service": "yes",
+      "financial_integrity": "no"
+    },
+    "reasons": [
+      "New schema, API and external delivery boundary require explicit architectural contracts."
+    ]
+  },
+  "total_subtasks": 10,
+  "subtasks": [
+    {
+      "id": "ST-01",
+      "name": "Domain contracts",
+      "domain": "relaybox",
+      "pr_group": "PR-01",
+      "layer": "domain",
+      "estimated_loc": 300,
+      "depends_on": [],
+      "test_cases": [
+        "TC-10-UNIT",
+        "TC-17-UNIT"
+      ],
+      "target_files": [
+        "internal/relaybox/domain/contracts.go",
+        "internal/relaybox/domain/spec_test.go",
+        "internal/relaybox/dispatcher/spec_test.go"
+      ],
+      "verification_command": "NO_COLOR=1 go test -race -timeout 90s ./internal/relaybox/dispatcher ./internal/relaybox/domain"
+    },
+    {
+      "id": "ST-02",
+      "name": "Schema and constraints",
+      "domain": "relaybox",
+      "pr_group": "PR-02",
+      "layer": "repository",
+      "estimated_loc": 350,
+      "depends_on": [
+        "ST-01"
+      ],
+      "test_cases": [
+        "TC-02-INT",
+        "TC-04-INT",
+        "TC-07-INT",
+        "TC-18-INT"
+      ],
+      "target_files": [
+        "migrations/202609290001_relaybox.up.sql",
+        "migrations/202609290001_relaybox.down.sql",
+        "internal/relaybox/persistence/schema_test.go",
+        "internal/relaybox/persistence/database.go",
+        "go.mod",
+        "go.sum",
+        "internal/relaybox/ingest/spec_test.go",
+        "internal/relaybox/subscriptions/spec_test.go",
+        "internal/relaybox/outbox/spec_test.go"
+      ],
+      "verification_command": "NO_COLOR=1 go test -race -timeout 90s ./internal/relaybox/ingest ./internal/relaybox/outbox ./internal/relaybox/persistence ./internal/relaybox/subscriptions"
+    },
+    {
+      "id": "ST-03",
+      "name": "Subscription persistence and service",
+      "domain": "relaybox",
+      "pr_group": "PR-03",
+      "layer": "service",
+      "estimated_loc": 400,
+      "depends_on": [
+        "ST-02"
+      ],
+      "test_cases": [
+        "TC-06-INT",
+        "TC-07-INT",
+        "TC-18-INT"
+      ],
+      "target_files": [
+        "internal/relaybox/subscriptions/subscriptions.go",
+        "internal/relaybox/subscriptions/spec_test.go",
+        "internal/relaybox/outbox/spec_test.go"
+      ],
+      "verification_command": "NO_COLOR=1 go test -race -timeout 90s ./internal/relaybox/outbox ./internal/relaybox/subscriptions"
+    },
+    {
+      "id": "ST-04",
+      "name": "Outbox claims and recovery",
+      "domain": "relaybox",
+      "pr_group": "PR-04",
+      "layer": "repository",
+      "estimated_loc": 450,
+      "depends_on": [
+        "ST-03"
+      ],
+      "test_cases": [
+        "TC-03-EDGE",
+        "TC-08-INT",
+        "TC-12-EDGE",
+        "TC-14-INT",
+        "TC-18-INT"
+      ],
+      "target_files": [
+        "internal/relaybox/outbox/outbox.go",
+        "internal/relaybox/outbox/spec_test.go",
+        "internal/relaybox/acceptance/spec_test.go",
+        "internal/relaybox/outbound/spec_test.go"
+      ],
+      "verification_command": "NO_COLOR=1 go test -race -timeout 90s ./internal/relaybox/acceptance ./internal/relaybox/outbound ./internal/relaybox/outbox"
+    },
+    {
+      "id": "ST-05",
+      "name": "Atomic ingestion",
+      "domain": "relaybox",
+      "pr_group": "PR-05",
+      "layer": "service",
+      "estimated_loc": 450,
+      "depends_on": [
+        "ST-04"
+      ],
+      "test_cases": [
+        "TC-02-INT",
+        "TC-04-INT",
+        "TC-05-RACE",
+        "TC-18-INT"
+      ],
+      "target_files": [
+        "internal/relaybox/ingest/ingest.go",
+        "internal/relaybox/ingest/spec_test.go",
+        "internal/relaybox/outbox/spec_test.go"
+      ],
+      "verification_command": "NO_COLOR=1 go test -race -timeout 90s ./internal/relaybox/ingest ./internal/relaybox/outbox"
+    },
+    {
+      "id": "ST-06",
+      "name": "Authenticated API",
+      "domain": "relaybox",
+      "pr_group": "PR-06",
+      "layer": "transport",
+      "estimated_loc": 450,
+      "depends_on": [
+        "ST-05"
+      ],
+      "test_cases": [
+        "TC-01-INT",
+        "TC-06-INT",
+        "TC-07-INT"
+      ],
+      "target_files": [
+        "internal/relaybox/transport/handler.go",
+        "internal/relaybox/transport/spec_test.go",
+        "internal/relaybox/subscriptions/spec_test.go"
+      ],
+      "verification_command": "NO_COLOR=1 go test -race -timeout 90s ./internal/relaybox/subscriptions ./internal/relaybox/transport"
+    },
+    {
+      "id": "ST-07",
+      "name": "Safe outbound HTTP",
+      "domain": "relaybox",
+      "pr_group": "PR-07",
+      "layer": "adapter",
+      "estimated_loc": 450,
+      "depends_on": [
+        "ST-06"
+      ],
+      "test_cases": [
+        "TC-08-INT",
+        "TC-09-EDGE",
+        "TC-11-INT",
+        "TC-12-EDGE",
+        "TC-14-INT"
+      ],
+      "target_files": [
+        "internal/relaybox/outbound/http.go",
+        "internal/relaybox/outbound/spec_test.go",
+        "go.mod",
+        "go.sum",
+        "internal/relaybox/dispatcher/spec_test.go",
+        "internal/relaybox/outbox/spec_test.go"
+      ],
+      "verification_command": "NO_COLOR=1 go test -race -timeout 90s ./internal/relaybox/dispatcher ./internal/relaybox/outbound ./internal/relaybox/outbox"
+    },
+    {
+      "id": "ST-08",
+      "name": "Bounded dispatcher",
+      "domain": "relaybox",
+      "pr_group": "PR-08",
+      "layer": "service",
+      "estimated_loc": 450,
+      "depends_on": [
+        "ST-07"
+      ],
+      "test_cases": [
+        "TC-08-INT",
+        "TC-10-UNIT",
+        "TC-11-INT",
+        "TC-12-EDGE",
+        "TC-13-RACE",
+        "TC-14-INT"
+      ],
+      "target_files": [
+        "internal/relaybox/dispatcher/dispatcher.go",
+        "internal/relaybox/dispatcher/spec_test.go",
+        "internal/relaybox/outbound/spec_test.go",
+        "internal/relaybox/outbox/spec_test.go",
+        "internal/relaybox/acceptance/spec_test.go"
+      ],
+      "verification_command": "NO_COLOR=1 go test -race -timeout 90s ./internal/relaybox/acceptance ./internal/relaybox/dispatcher ./internal/relaybox/outbound ./internal/relaybox/outbox"
+    },
+    {
+      "id": "ST-09",
+      "name": "Health and telemetry",
+      "domain": "relaybox",
+      "pr_group": "PR-09",
+      "layer": "cross_cutting",
+      "estimated_loc": 400,
+      "depends_on": [
+        "ST-08"
+      ],
+      "test_cases": [
+        "TC-15-INT",
+        "TC-16-INT"
+      ],
+      "target_files": [
+        "internal/relaybox/health/health.go",
+        "internal/relaybox/health/spec_test.go",
+        "internal/relaybox/telemetry/telemetry.go",
+        "internal/relaybox/telemetry/spec_test.go",
+        "go.mod",
+        "go.sum"
+      ],
+      "verification_command": "NO_COLOR=1 go test -race -timeout 90s ./internal/relaybox/health ./internal/relaybox/telemetry"
+    },
+    {
+      "id": "ST-10",
+      "name": "Application composition and acceptance",
+      "domain": "relaybox",
+      "pr_group": "PR-10",
+      "layer": "config",
+      "estimated_loc": 450,
+      "depends_on": [
+        "ST-09"
+      ],
+      "test_cases": [
+        "TC-03-EDGE",
+        "TC-13-RACE",
+        "TC-14-INT",
+        "TC-15-INT",
+        "TC-16-INT"
+      ],
+      "target_files": [
+        "cmd/relaybox/main.go",
+        "cmd/relaybox/main_test.go",
+        "internal/relaybox/acceptance/spec_test.go",
+        "docs/relaybox-operations.md",
+        "internal/relaybox/outbound/spec_test.go",
+        "internal/relaybox/health/spec_test.go",
+        "internal/relaybox/telemetry/spec_test.go"
+      ],
+      "verification_command": "NO_COLOR=1 go test -race -timeout 90s ./cmd/relaybox ./internal/relaybox/acceptance ./internal/relaybox/health ./internal/relaybox/outbound ./internal/relaybox/telemetry"
+    }
+  ],
+  "verification_commands": [
+    "git diff --check"
+  ]
+}
