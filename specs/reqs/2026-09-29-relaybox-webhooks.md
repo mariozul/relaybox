@@ -91,7 +91,7 @@ and per-tenant isolation.
 - Every FR/AC MUST be traceable through req → test → impl specs (RTM).
 
 ## 9. Stage 1 requirements decomposition
-Status: requirements and architecture proposed for Human Gate 1; downstream specifications are not locked.
+Status: architecture and TestSpec approved by requester; gateway contract resolved. Stage 1 only; implementation requires a separate stage.
 The preceding TRD is preserved verbatim. This addendum resolves compound requirements without replacing their IDs.
 Reqspec triage: REQUIRED. Blast radius: HIGH. Database schema: yes; API contract: yes; multi-service: yes; critical state integrity: yes (delivery state, not financial processing).
 Canonical architecture rules are RULE-ARCH-01, RULE-ARCH-02 and RULE-ARCH-03; the abbreviated reference in the original TRD does not omit either layer invariant.
@@ -136,12 +136,22 @@ Cancellation terminates work; do not fabricate a response after a client disconn
 | RULE-EVT-02 | Commit-before-remote-delivery and recoverable durable outbox |
 | RULE-OBS-01, RULE-OBS-02, RULE-OBS-03, RULE-OBS-04 | Context JSON logs, HTTP/SQL trace propagation, finite metrics and truthful health probes |
 RULE-EVT-01 is non-applicable: there is no broker consumer or Ack/Nack interface. Durable retry/dead-letter semantics remain required by FR-DEL-02.
-All FR/REQ/RULE obligations above will receive explicit TC mappings after Gate 1; no end-to-end RTM completion is claimed at this checkpoint.
+All applicable obligations map through TestSpec to the execution manifest; RULE-EVT-01 remains explicitly non-applicable.
 
-## 12. Assumptions requiring architecture sign-off
-ASSUMP-01: A trusted authentication adapter supplies tenant and actor context; deployment selects the verifier, with no trust in arbitrary public identity headers.
+## 12. Approved assumptions
+ASSUMP-01: Gateway authentication follows the approved contract below.
 ASSUMP-02: Subscription membership and target URL are snapshotted at ingestion; no retrospective delivery to later subscriptions. Unmatched events are retained.
 ASSUMP-03: Soft deletion preserves already queued deliveries; cancellation of queued deliveries is not part of this feature.
 ASSUMP-04: At-least-once does not guarantee subscriber exactly-once effects; receivers deduplicate stable delivery IDs.
-ASSUMP-05: Defaults, response classifications and URL-safety choices are proposed in the RFC, not silently inferred from the TRD.
+ASSUMP-05: RFC defaults, response classifications and URL safety are approved architecture decisions.
 Out of scope remains the TRD non-goals plus update endpoints, broker integration and Stage 2 implementation in this PR.
+
+## 13. Approved gateway contract
+REQ-17 (FR-ING-01, FR-SUB-02), AC-17: Given a configured gateway secret, when any business endpoint receives a request, then require X-Internal-Secret matching GATEWAY_SHARED_SECRET and one X-Tenant-ID containing a valid UUID; otherwise return 401 before any persistence call.
+REQ-18 (FR-ING-01), AC-18: Given authenticated gateway headers, when context is constructed, then store typed tenant identity and optional X-Actor-ID in context; body/query identity never overrides it.
+Empty configured secret prevents startup; missing, duplicate or invalid authentication headers fail closed. Compare secret digests in constant time. Never forward gateway headers to subscribers or include them in telemetry.
+Optional actor absence uses the explicit audit principal gateway-system; background mutations use relaybox-dispatcher. These are service identities, not claims of a human actor.
+ASSUMP-06: Gateway strips client-supplied identity/secret headers and injects verified values; TLS and network access restrictions protect the shared secret. Possession of this shared secret authenticates the gateway, not each end user independently.
+NFR-01: Worker count <= configured W (default 8); HTTP timeout 10s, lease 30s, graceful shutdown 15s; validate lease exceeds timeout plus persistence margin.
+NFR-02: Domain/service coverage >=85%; every sentinel branch has an asserted test; synchronization uses injected time, channels and deadlines, never sleeps.
+SC-01: All 11 original FRs and all six original ACs have executable test targets and implementation owners; no implementation is claimed by this spec PR.
