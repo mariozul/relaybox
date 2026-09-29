@@ -21,7 +21,7 @@ and per-tenant isolation.
 - The Closer & Scribe / ticket-lifecycle flow.
 
 ## 4. Stack & Architecture
-- Go 1.23, 7-layer Clean Architecture (domain layer pure per RULE-ARCH-01/02).
+- Go 1.25, 7-layer Clean Architecture (domain layer pure per RULE-ARCH-01/02).
 - PostgreSQL for persistence.
 - Outbound HTTP to external subscriber endpoints.
 - Must satisfy all invariants in docs/rules/domain_invariants.md.
