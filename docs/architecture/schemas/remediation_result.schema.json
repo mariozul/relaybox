@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schemas.agent-orchestration.internal/remediation_result.schema.json",
+  "title": "RemediationResultPayload",
+  "description": "Canonical schema for remediation execution results emitted by the Coding Agent",
+  "type": "object",
+  "required": ["verdict", "actions"],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["SAFE_TO_MERGE", "NEEDS_FIX", "NEEDS_HUMAN_DISCUSSION"]
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/RemediationAction"
+      }
+    },
+    "verification": {
+      "type": "object",
+      "properties": {
+        "tests_passed": { "type": "boolean" },
+        "race_conditions_detected": { "type": "integer", "default": 0 },
+        "linter_clean": { "type": "boolean" }
+      }
+    },
+    "suggested_pr_reply": {
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "RemediationAction": {
+      "type": "object",
+      "required": ["finding_id", "status"],
+      "properties": {
+        "finding_id": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["FIXED_LOCALLY", "WITHDRAWN_FALSE_POSITIVE", "ESCALATED_HUMAN_DISCUSSION", "DEFERRED"]
+        },
+        "file_edited": { "type": "string" },
+        "explanation": { "type": "string" }
+      }
+    }
+  }
+}
