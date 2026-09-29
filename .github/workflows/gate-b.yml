@@ -8,6 +8,8 @@ on:
       - "artifacts/plans/**"
 jobs:
   gate-b:
+    # Skip verification on draft PRs while the agent is still committing specs
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
