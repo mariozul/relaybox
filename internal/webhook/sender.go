@@ -29,8 +29,10 @@ func (s *Sender) Send(ctx context.Context, delivery domain.Delivery) (int, error
 	if err != nil {
 		return 0, fmt.Errorf("send webhook: %w", err)
 	}
-	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	if err := resp.Body.Close(); err != nil {
+		return 0, fmt.Errorf("close webhook response: %w", err)
+	}
 	return resp.StatusCode, nil
 }
 
