@@ -108,3 +108,58 @@ func (s *Store) DeleteSubscription(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+func (s *Store) Claim(ctx context.Context, now time.Time, limit int, lease time.Duration) ([]domain.Delivery, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin claim: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	rows, err := tx.Query(ctx, `SELECT o.id,o.tenant_id,o.event_id,o.subscription_id,e.event_type,e.payload,s.target_url,o.attempts
+		FROM outbox o JOIN events e ON e.id=o.event_id JOIN subscriptions s ON s.id=o.subscription_id
+		WHERE o.next_attempt_at<=$1 AND (o.status='pending' OR (o.status='inflight' AND o.lease_until<=$1))
+		ORDER BY o.next_attempt_at FOR UPDATE OF o SKIP LOCKED LIMIT $2`, now, limit)
+	if err != nil {
+		return nil, fmt.Errorf("select outbox: %w", err)
+	}
+	defer rows.Close()
+	var deliveries []domain.Delivery
+	for rows.Next() {
+		var d domain.Delivery
+		if err = rows.Scan(&d.ID, &d.TenantID, &d.EventID, &d.SubscriptionID, &d.EventType, &d.Payload, &d.TargetURL, &d.Attempts); err != nil {
+			return nil, fmt.Errorf("scan outbox: %w", err)
+		}
+		d.LeaseToken = newID()
+		if _, err = tx.Exec(ctx, `UPDATE outbox SET status='inflight',lease_token=$1,lease_until=$2 WHERE id=$3`, d.LeaseToken, now.Add(lease), d.ID); err != nil {
+			return nil, fmt.Errorf("lease outbox: %w", err)
+		}
+		deliveries = append(deliveries, d)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate outbox: %w", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit claim: %w", err)
+	}
+	return deliveries, nil
+}
+
+func (s *Store) MarkDelivered(ctx context.Context, d domain.Delivery, at time.Time) error {
+	_, err := s.pool.Exec(ctx, `UPDATE outbox SET status='delivered',attempts=attempts+1,delivered_at=$1,lease_token=NULL,lease_until=NULL WHERE id=$2 AND lease_token=$3`, at, d.ID, d.LeaseToken)
+	if err != nil {
+		return fmt.Errorf("mark delivered: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) MarkFailed(ctx context.Context, d domain.Delivery, next time.Time, reason string, dead bool) error {
+	status := "pending"
+	if dead {
+		status = "deadletter"
+	}
+	_, err := s.pool.Exec(ctx, `UPDATE outbox SET status=$1,attempts=attempts+1,next_attempt_at=$2,last_error=$3,lease_token=NULL,lease_until=NULL WHERE id=$4 AND lease_token=$5`, status, next, reason, d.ID, d.LeaseToken)
+	if err != nil {
+		return fmt.Errorf("mark failed: %w", err)
+	}
+	return nil
+}
