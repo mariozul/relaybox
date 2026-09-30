@@ -24,7 +24,7 @@ and per-tenant isolation.
 - Go 1.25, 7-layer Clean Architecture (domain layer pure per RULE-ARCH-01/02).
 - PostgreSQL for persistence.
 - Outbound HTTP to external subscriber endpoints.
-- Must satisfy all invariants in docs/rules/domain_invariants.md.
+- Must satisfy all architectural domain invariants (RULE-ARCH, RULE-DATA, RULE-RES, RULE-SEC).
 
 ## 5. Functional Requirements
 
@@ -86,6 +86,6 @@ and per-tenant isolation.
 - AC-06: `/readyz` returns 503 when the DB is unreachable (verifies FR-OBS-01).
 
 ## 8. Constraints
-- All invariants in docs/rules/domain_invariants.md are non-negotiable.
-- PR sizing per docs/rules/spec_decomposition_rules.md (≤ 500 LOC per PR).
-- Every FR/AC MUST be traceable through req → test → impl specs (RTM).
+- All architectural domain invariants provided by the agent system rules are non-negotiable.
+- PR sizing limit: ≤ 500 LOC per PR.
+- Every FR/AC MUST be traceable through requirements, tests, and implementation (RTM).
