@@ -1,0 +1,127 @@
+{
+  "task_id": "RELAYBOX-01",
+  "feature_name": "relaybox-webhook-relay",
+  "blast_radius": "HIGH",
+  "planner_replan_cycle": 0,
+  "step_budgets": {
+    "planner_max_tool_steps": 40,
+    "coder_max_tool_steps": 50,
+    "reviewer_max_tool_steps": 40
+  },
+  "reqspec_triage": {
+    "decision": "REQUIRED",
+    "bounded_contexts": ["ingestion", "subscriptions", "delivery", "observability"],
+    "matrix_answers": {
+      "db_schema": "yes",
+      "api_contract": "yes",
+      "multi_service": "yes",
+      "financial_integrity": "no"
+    },
+    "reasons": [
+      "TRD spans 4 bounded contexts (ingestion, subscriptions, delivery, observability) → multi-domain decomposition required",
+      "Blast Radius Matrix has 3 'yes' answers (DB schema, API contract, multi-service) → HIGH",
+      "New public API contract (POST /v1/events, subscription CRUD, health endpoints) requires explicit error catalog and protocol mapping"
+    ]
+  },
+  "total_subtasks": 4,
+  "subtasks": [
+    {
+      "id": "ST-01",
+      "domain": "core-domain",
+      "pr_group": "PR-01",
+      "name": "Domain entities, sentinel errors, ports & repository interfaces",
+      "layer": "domain",
+      "estimated_loc": 180,
+      "depends_on": [],
+      "test_cases": ["TC-01-UNIT", "TC-02-EDGE", "TC-03-UNIT", "TC-04-UNIT", "TC-14-UNIT"],
+      "target_files": [
+        "internal/domain/event.go",
+        "internal/domain/subscription.go",
+        "internal/domain/outbox.go",
+        "internal/domain/errors.go",
+        "internal/domain/clock.go",
+        "internal/domain/delivery/classify.go",
+        "internal/domain/delivery/classify_test.go",
+        "internal/repository/events.go",
+        "internal/repository/subscriptions.go",
+        "internal/repository/outbox.go",
+        "internal/domain/domain_test.go"
+      ],
+      "verification_command": "go test -v -race ./internal/domain/..."
+    },
+    {
+      "id": "ST-02",
+      "domain": "persistence",
+      "pr_group": "PR-02",
+      "name": "Postgres migrations & repository adapters (transactional outbox)",
+      "layer": "adapter",
+      "estimated_loc": 280,
+      "depends_on": ["ST-01"],
+      "test_cases": ["TC-02-EDGE", "TC-05-INT", "TC-06-INT", "TC-09-RACE"],
+      "target_files": [
+        "migrations/20261001000001_create_relaybox_tables.up.sql",
+        "migrations/20261001000001_create_relaybox_tables.down.sql",
+        "internal/infrastructure/postgres/db.go",
+        "internal/infrastructure/postgres/events_repo.go",
+        "internal/infrastructure/postgres/subscriptions_repo.go",
+        "internal/infrastructure/postgres/outbox_repo.go",
+        "internal/infrastructure/postgres/events_repo_test.go",
+        "internal/infrastructure/postgres/subscription_repo_test.go",
+        "internal/infrastructure/postgres/outbox_repo_test.go"
+      ],
+      "verification_command": "go test -v -race -timeout 60s ./internal/infrastructure/postgres/..."
+    },
+    {
+      "id": "ST-03",
+      "domain": "delivery",
+      "pr_group": "PR-03",
+      "name": "Use cases, bounded dispatcher worker pool & OTel relay client",
+      "layer": "service",
+      "estimated_loc": 320,
+      "depends_on": ["ST-02"],
+      "test_cases": ["TC-01-UNIT", "TC-02-EDGE", "TC-06-INT", "TC-07-INT", "TC-08-INT", "TC-09-RACE", "TC-10-UNIT", "TC-11-UNIT"],
+      "target_files": [
+        "internal/service/ingestion.go",
+        "internal/service/ingestion_test.go",
+        "internal/service/subscription.go",
+        "internal/service/subscription_test.go",
+        "internal/service/delivery.go",
+        "internal/infrastructure/dispatcher/dispatcher.go",
+        "internal/infrastructure/dispatcher/dispatcher_test.go",
+        "internal/infrastructure/dispatcher/dispatcher_race_test.go",
+        "internal/infrastructure/dispatcher/dispatcher_restart_test.go",
+        "internal/infrastructure/dispatcher/relay_client.go",
+        "internal/infrastructure/dispatcher/relay_client_test.go"
+      ],
+      "verification_command": "go test -v -race -timeout 60s ./internal/service/... ./internal/infrastructure/dispatcher/..."
+    },
+    {
+      "id": "ST-04",
+      "domain": "transport-observability",
+      "pr_group": "PR-04",
+      "name": "HTTP transport, health probes, telemetry & service wiring",
+      "layer": "transport",
+      "estimated_loc": 300,
+      "depends_on": ["ST-03"],
+      "test_cases": ["TC-03-UNIT", "TC-12-INT", "TC-13-UNIT"],
+      "target_files": [
+        "internal/transport/http/router.go",
+        "internal/transport/http/events_handler.go",
+        "internal/transport/http/events_handler_test.go",
+        "internal/transport/http/subscriptions_handler.go",
+        "internal/transport/http/health.go",
+        "internal/transport/http/health_test.go",
+        "internal/observability/logger.go",
+        "internal/observability/metrics.go",
+        "internal/observability/metrics_test.go",
+        "internal/observability/trace.go",
+        "cmd/relaybox/main.go"
+      ],
+      "verification_command": "go test -v -race -timeout 60s ./internal/transport/... ./internal/observability/..."
+    }
+  ],
+  "verification_commands": [
+    "go build ./...",
+    "go test -v -race -timeout 60s ./..."
+  ]
+}
