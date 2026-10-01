@@ -1,4 +1,4 @@
-// Package main starts the Relaybox HTTP service with liveness/readiness probes.
+// Package main starts the Relaybox HTTP service with all components wired.
 package main
 
 import (
@@ -11,23 +11,66 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/mariozul/relaybox/internal/api"
+	"github.com/mariozul/relaybox/internal/delivery"
+	"github.com/mariozul/relaybox/internal/observability"
+	"github.com/mariozul/relaybox/internal/service"
+	"github.com/mariozul/relaybox/internal/storage"
 	"github.com/mariozul/relaybox/internal/version"
 )
 
-func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+// realClock implements domain.Clock using time.Now.
+type realClock struct{}
 
+func (realClock) Now() time.Time { return time.Now() }
+
+func main() {
+	logger := observability.NewLogger(slog.LevelInfo)
+	metrics := observability.NewMetrics()
+
+	// Database pool.
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://relaybox:relaybox@localhost:5432/relaybox?sslmode=disable"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	pool, err := pgxpool.New(ctx, dsn)
+	cancel()
+	if err != nil {
+		logger.Error("failed to connect to database", "error", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	// Repositories.
+	eventRepo := storage.NewPostgresEventRepository(pool)
+	subRepo := storage.NewPostgresSubscriptionRepository(pool)
+	outboxRepo := storage.NewPostgresOutboxRepository(pool)
+
+	// Application services.
+	clock := realClock{}
+	eventSvc := service.NewEventService(eventRepo, outboxRepo, subRepo, clock)
+	subSvc := service.NewSubscriptionService(subRepo, clock)
+
+	// HTTP handlers.
+	eventHandler := api.NewEventHandler(eventSvc)
+	subHandler := api.NewSubscriptionHandler(subSvc)
+
+	// Health handler.
+	healthHandler := api.NewHealthHandler(pool)
+
+	// Router.
+	apiRouter := api.NewRouter(eventHandler, subHandler)
+
+	// Main mux: health + metrics + API (with tenant middleware).
 	mux := http.NewServeMux()
-	// RULE-OBS-04: liveness & readiness probes.
-	mux.HandleFunc("/livez", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
-	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
-		// TODO: check DB/cache reachability before reporting ready.
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ready"))
-	})
+	mux.HandleFunc("/livez", healthHandler.Livez)
+	mux.HandleFunc("/readyz", healthHandler.Readyz)
+	mux.Handle("/metrics", observability.MetricsHandler())
+	mux.Handle("/v1/", apiRouter)
 
 	srv := &http.Server{
 		Addr:              ":8080",
@@ -35,24 +78,34 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
+	// Delivery dispatcher (bounded worker pool).
+	dispatchCfg := delivery.DefaultDispatcherConfig()
+	dispatchCfg.Logger = logger
+	dispatchCfg.Metrics = metrics
+	sender := delivery.NewHTTPSender(delivery.DefaultSenderConfig())
+	dispatcher := delivery.NewDispatcher(dispatchCfg, outboxRepo, eventRepo, subRepo, sender)
+	dispatcher.Start(context.Background())
+
 	go func() {
 		logger.Info("relaybox starting", "version", version.Version, "addr", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Error("server failed", "err", err)
+			logger.Error("server failed", "error", err)
 			os.Exit(1)
 		}
 	}()
 
-	// RULE-RES-02: deterministic lifecycle via graceful shutdown.
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// Graceful shutdown (RULE-RES-02).
+	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	<-ctx.Done()
+	<-sigCtx.Done()
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	logger.Info("shutting down...")
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.Error("graceful shutdown failed", "err", err)
-		os.Exit(1)
+		logger.Error("server shutdown failed", "error", err)
 	}
+	dispatcher.Stop()
 	logger.Info("relaybox stopped")
 }
