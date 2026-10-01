@@ -1,0 +1,93 @@
+{
+  "timestamp": "2026-09-30T23:40:00Z",
+  "source": "pre_pr_gate",
+  "impact_scope": "TACTICAL",
+  "status": "NEEDS_FIX",
+  "verdict": "REQUEST_CHANGES",
+  "audited_diff_sha256": "611039b8f43edd8a04635eec1336c2221d274ff0ae35ee017981a34b4b96e5a9",
+  "worktree_head_sha": "41db872d1af7431fef48bd32ad1ebc6e837c4547",
+  "remediation_cycle": 2,
+  "summary": "Cycle 2 re-audit: infra/UI-layer invariants (RULE-SEC-01 tenant-from-context, RULE-OBS-01/03/04 telemetry, RULE-RES-02 bounded dispatcher pool, RULE-RES-03 body cleanup) are now satisfied, and tests pass. However, the persistence core remains broken: migrations contain SQL syntax errors (NOT NUL), ingest passes a nil transaction into CreateWithOutbox which the repo explicitly rejects, and the dispatcher delivers to a hard-coded empty URL without subscription resolution. These are P0/P1 data-integrity and functional blockers. Verdict: REQUEST_CHANGES (self-healing cycle 3 of max 3).",
+  "findings": [
+    {
+      "id": "F-001",
+      "file_path": "migrations/20260227000001_create_events_subscriptions_outbox.up.sql",
+      "line_start": 31,
+      "line_end": 37,
+      "severity": "CRITICAL",
+      "category": "data_integrity",
+      "rule_violated": "RULE-DATA-01",
+      "description": "SQL syntax errors in the outbox migration: `subscription_id TEXT NOT NUL REFERENCES subscriptions(id)` and `delivery_id TEXT NOT NUL` use the typo `NOT NUL` instead of `NOT NULL`. The migration will fail to apply, so the events/subscriptions/outbox schema (including the tenant dedup unique constraint `uq_events_tenant_dedup`) never exists in any environment. This breaks RULE-DATA-01 atomic persistence and RULE-DATA-02 idempotent ingest at the foundation level."
+    },
+    {
+      "id": "F-002",
+      "file_path": "internal/service/ingest.go",
+      "line_start": 76,
+      "line_end": 80,
+      "severity": "CRITICAL",
+      "category": "data_integrity",
+      "rule_violated": "RULE-DATA-01",
+      "description": "IngestService.Ingest calls `s.eventRepo.CreateWithOutbox(ctx, nil, evt, entries)` with a nil transaction. EventRepo.CreateWithOutbox explicitly returns `\"transaction required (RULE-DATA-01)\"` when tx is nil, so every real (non-stub) ingest will fail. There is no transaction manager / BeginTx anywhere in the diff, so event + outbox rows cannot be committed atomically. Partial-commit hazard is deferred but the atomicity path is unimplemented — dual-write consistency (RULE-EVT-02) also depends on this transactional outbox."
+    },
+    {
+      "id": "F-003",
+      "file_path": "internal/service/dispatch.go",
+      "line_start": 86,
+      "line_end": 105,
+      "severity": "HIGH",
+      "category": "functional_correctness",
+      "rule_violated": "RULE-ARCH-02",
+      "description": "Dispatcher.processOne delivers with a hard-coded empty `URL: \"\"` and `Body: nil`, with a comment \"resolved via subscription lookup\" but no lookup is ever performed. httpclient.Deliver returns an error for empty URLs, so err != nil and every delivery is silently dropped before policy classification. The delivery pipeline is functionally dead: no OutboxEntry ever reaches MarkDelivered/MarkAttempt/DeadLetter in production wiring. The dispatcher also holds no SubscriptionRepository to resolve target URLs. Additionally, processBatch/processOne swallow all errors (`if err != nil { return }`, `_ = d.outbox...`) with zero logging (d.logger is declared but never used), violating RULE-OBS-01 structured-observability requirements for the delivery hot path."
+    },
+    {
+      "id": "F-004",
+      "file_path": "internal/service/ingest.go",
+      "line_start": 55,
+      "line_end": 61,
+      "severity": "MEDIUM",
+      "category": "idempotency",
+      "rule_violated": "RULE-DATA-02",
+      "description": "Dedup uses a check-then-act pattern (FindByDedupKey then CreateWithOutbox) with no unique-constraint race handling. The DB unique index (uq_events_tenant_dedup) exists in the migration, but the service never maps a constraint-violation from CreateWithOutbox back to the existing event — the defined sentinel ErrEventDuplicate is unused. Under concurrent ingest of the same dedup_key, a raw duplicate-key error will surface as a 500 INTERNAL_ERROR instead of an idempotent duplicate response, and the handler's `duplicate` response flag is never set on the dedup path (event_handler.go:69 always returns plain 201)."
+    },
+    {
+      "id": "F-005",
+      "file_path": "internal/transport/http/subscription_handler.go",
+      "line_start": 40,
+      "line_end": 45,
+      "severity": "MEDIUM",
+      "category": "error_taxonomy",
+      "rule_violated": "RULE-ARCH-03",
+      "description": "SubscriptionHandler.Create maps every service error to 400 INVALID_EVENT_PAYLOAD and echoes raw `err.Error()` to the client. Infrastructure failures (DB down, constraint violations, connection refused) will be misclassified as client errors and may leak internal error strings across the domain boundary. Must map domain sentinels (ErrInvalidEventPayload/ErrTenantMissing) explicitly and return 500 with a sanitized message for everything else, per RULE-ARCH-03."
+    },
+    {
+      "id": "F-006",
+      "file_path": "internal/transport/http/metrics.go",
+      "line_start": 84,
+      "line_end": 91,
+      "severity": "LOW",
+      "category": "observability",
+      "rule_violated": "RULE-OBS-03",
+      "description": "MetricsMiddleware labels use `r.URL.Path` directly. Any route with path parameters (e.g. /v1/subscriptions/{id}) yields unbounded label cardinality. Should use the matched route pattern (e.g. mux route template) instead of the raw path. Note: Go 1.22 ServeMux patterns are already used elsewhere, so route templating is available. Delivery metrics (deliveryAttemptsTotal, deliveryDuration) and ingestionEventsTotal are registered but never incremented anywhere — the RULE-OBS-03 requirement that business mutators emit metrics is only half-met."
+    },
+    {
+      "id": "F-007",
+      "file_path": "internal/service/ingest.go",
+      "line_start": 63,
+      "line_end": 68,
+      "severity": "LOW",
+      "category": "observability",
+      "rule_violated": "RULE-OBS-01",
+      "description": "IngestService performs no structured logging of ingest outcomes (accepted/deduplicated/rejected) and is not instrumented with the telemetry.LoggerWithTrace trace-bound logger. The service layer should log via slog bound to ctx so trace_id/span_id propagate (RULE-OBS-01/02)."
+    },
+    {
+      "id": "F-008",
+      "file_path": "internal/infrastructure/httpclient/client.go",
+      "line_start": 58,
+      "line_end": 62,
+      "severity": "LOW",
+      "category": "observability",
+      "rule_violated": "RULE-OBS-02",
+      "description": "A new http.Client is allocated on every Deliver call instead of reusing the transport-bound client; while otelhttp transport propagation is present (good), per-call client construction adds GC pressure on the delivery hot path and there is no request-body signing/HMAC header as would be expected for a verifiable webhook (DeliveryRequest.Body is never attached to the outgoing request — the POST always sends an empty body). Payload is dropped entirely."
+    }
+  ]
+}

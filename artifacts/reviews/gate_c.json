@@ -1,0 +1,61 @@
+{
+  "gate": "GATE_C",
+  "verdict": "FAILED",
+  "timestamp": "2026-10-01T00:09:26Z",
+  "head_commit_sha": "41db872d1af7431fef48bd32ad1ebc6e837c4547",
+  "diff_sha256": "c471241a3af6eeb851e897c1b022eb3ce41f5e1fadbb5cee71a3e1842c6da5d7",
+  "base": "HEAD",
+  "coverage_floor_pct": 85.0,
+  "checks": {
+    "loc_budget": {
+      "max_loc": 500,
+      "total_diff_loc": 6002,
+      "per_file": {
+        "artifacts/plans/2026-02-27-relaybox-plan.html": 729,
+        "artifacts/plans/2026-02-27-relaybox.json": 174,
+        "artifacts/reviews/gate_c.json": 58,
+        "audited.diff": 2493,
+        "coverage.out": 147,
+        "docs/specs/implspecs/2026-02-27-relaybox.md": 93,
+        "docs/specs/reqspecs/2026-02-27-relaybox-webhook-relay.md": 71,
+        "docs/specs/testspecs/2026-02-27-relaybox.md": 63,
+        "go.mod": 30,
+        "go.sum": 58,
+        "internal/domain/clock.go": 17,
+        "internal/domain/domain_test.go": 129,
+        "internal/domain/errors.go": 11,
+        "internal/domain/event.go": 47,
+        "internal/domain/policy.go": 65,
+        "internal/domain/policy_test.go": 92,
+        "internal/infrastructure/httpclient/client.go": 66,
+        "internal/infrastructure/postgres/event_repo.go": 24,
+        "internal/infrastructure/postgres/outbox_repo.go": 28,
+        "internal/infrastructure/postgres/subscription_repo.go": 28,
+        "internal/repository/interfaces.go": 27,
+        "internal/service/dispatch.go": 105,
+        "internal/service/ingest.go": 107,
+        "internal/service/service_test.go": 284,
+        "internal/service/subscription.go": 59,
+        "internal/telemetry/logging.go": 35,
+        "internal/transport/http/context.go": 77,
+        "internal/transport/http/dto/event.go": 12,
+        "internal/transport/http/dto/subscription.go": 19,
+        "internal/transport/http/event_handler.go": 73,
+        "internal/transport/http/handlers_test.go": 234,
+        "internal/transport/http/health.go": 46,
+        "internal/transport/http/health_test.go": 53,
+        "internal/transport/http/metrics.go": 116,
+        "internal/transport/http/metrics_test.go": 43,
+        "internal/transport/http/subscription_handler.go": 90,
+        "migrations/20260227000001_create_events_subscriptions_outbox.down.sql": 6,
+        "migrations/20260227000001_create_events_subscriptions_outbox.up.sql": 40,
+        "tmp/open-swe-sandboxes/relaybox/artifacts/reviews/2026-09-30-review.json": 153
+      }
+    },
+    "verification_runs": [],
+    "coverage_pct": null
+  },
+  "errors": [
+    "Files modified outside every subtask whitelist (G-02): artifacts/plans/2026-02-27-relaybox-plan.html, artifacts/plans/2026-02-27-relaybox.json, artifacts/reviews/gate_c.json, audited.diff, coverage.out, docs/specs/implspecs/2026-02-27-relaybox.md, docs/specs/reqspecs/2026-02-27-relaybox-webhook-relay.md, docs/specs/testspecs/2026-02-27-relaybox.md, go.mod, go.sum, internal/domain/clock.go, internal/domain/domain_test.go, internal/domain/errors.go, internal/domain/event.go, internal/domain/policy.go, internal/domain/policy_test.go, internal/infrastructure/httpclient/client.go, internal/infrastructure/postgres/event_repo.go, internal/infrastructure/postgres/outbox_repo.go, internal/infrastructure/postgres/subscription_repo.go, internal/repository/interfaces.go, internal/service/dispatch.go, internal/service/ingest.go, internal/service/service_test.go, internal/service/subscription.go, internal/telemetry/logging.go, internal/transport/http/context.go, internal/transport/http/dto/event.go, internal/transport/http/dto/subscription.go, internal/transport/http/event_handler.go, internal/transport/http/handlers_test.go, internal/transport/http/health.go, internal/transport/http/health_test.go, internal/transport/http/metrics.go, internal/transport/http/metrics_test.go, internal/transport/http/subscription_handler.go, migrations/20260227000001_create_events_subscriptions_outbox.down.sql, migrations/20260227000001_create_events_subscriptions_outbox.up.sql, tmp/open-swe-sandboxes/relaybox/artifacts/reviews/2026-09-30-review.json"
+  ]
+}

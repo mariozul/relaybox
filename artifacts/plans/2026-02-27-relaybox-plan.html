@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plan: Relaybox Webhook Relay</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    
+    :root {
+      --bg: #ffffff;
+      --bg-subtle: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --accent: #2563eb;
+      --accent-light: #eff6ff;
+      --green-bg: #ecfdf5;
+      --green-text: #059669;
+      --blue-bg: #eff6ff;
+      --blue-text: #2563eb;
+      --purple-bg: #f5f3ff;
+      --purple-text: #7c3aed;
+      --amber-bg: #fffbeb;
+      --amber-text: #d97706;
+      color-scheme: light;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #0b0f19;
+        --bg-subtle: #111827;
+        --card-bg: #1e293b;
+        --border: #334155;
+        --text: #f8fafc;
+        --text-muted: #94a3b8;
+        --accent: #3b82f6;
+        --accent-light: rgba(59, 130, 246, 0.15);
+        --green-bg: rgba(16, 185, 129, 0.15);
+        --green-text: #34d399;
+        --blue-bg: rgba(59, 130, 246, 0.15);
+        --blue-text: #60a5fa;
+        --purple-bg: rgba(168, 85, 247, 0.15);
+        --purple-text: #c084fc;
+        --amber-bg: rgba(245, 158, 11, 0.15);
+        --amber-text: #fbbf24;
+        color-scheme: dark;
+      }
+    }
+
+    :root[data-theme="dark"] {
+      --bg: #0b0f19;
+      --bg-subtle: #111827;
+      --card-bg: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #3b82f6;
+      --accent-light: rgba(59, 130, 246, 0.15);
+      --green-bg: rgba(16, 185, 129, 0.15);
+      --green-text: #34d399;
+      --blue-bg: rgba(59, 130, 246, 0.15);
+      --blue-text: #60a5fa;
+      --purple-bg: rgba(168, 85, 247, 0.15);
+      --purple-text: #c084fc;
+      --amber-bg: rgba(245, 158, 11, 0.15);
+      --amber-text: #fbbf24;
+      color-scheme: dark;
+    }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 1040px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .top-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      background: var(--amber-bg);
+      color: var(--amber-text);
+      margin-bottom: 12px;
+    }
+
+    h1 {
+      font-size: 26px;
+      font-weight: 700;
+      margin: 0 0 16px 0;
+      color: var(--text);
+      text-wrap: balance;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    .kpi-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+    }
+
+    .kpi-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 4px;
+    }
+
+    .kpi-val {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    section {
+      margin-bottom: 32px;
+    }
+
+    h2 {
+      font-size: 18px;
+      font-weight: 600;
+      margin: 0 0 14px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+    }
+
+    .badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      display: inline-block;
+      white-space: nowrap;
+    }
+
+    .badge-green { background: var(--green-bg); color: var(--green-text); }
+    .badge-blue { background: var(--blue-bg); color: var(--blue-text); }
+    .badge-purple { background: var(--purple-bg); color: var(--purple-text); }
+    .badge-amber { background: var(--amber-bg); color: var(--amber-text); }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+
+    .subtask-card {
+      border-left: 4px solid var(--accent);
+    }
+
+    .subtask-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .subtask-id {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--accent);
+    }
+
+    .subtask-title {
+      font-weight: 600;
+      font-size: 14px;
+      flex: 1;
+    }
+
+    .subtask-body {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .meta-row {
+      margin-top: 6px;
+    }
+
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+      padding: 2px 5px;
+      border-radius: 4px;
+      color: var(--text);
+    }
+
+    details {
+      margin-top: 10px;
+    }
+
+    details summary {
+      cursor: pointer;
+      color: var(--accent);
+      font-size: 12px;
+      user-select: none;
+    }
+
+    .file-list {
+      margin: 8px 0 0 16px;
+      padding: 0;
+      list-style-type: disc;
+    }
+
+    .file-list li {
+      margin-bottom: 4px;
+    }
+
+    .table-container {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--card-bg);
+      margin-bottom: 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 13px;
+    }
+
+    th {
+      background: var(--bg-subtle);
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 11px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .dag-waves {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+    }
+
+    .wave-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    .wave-num {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+
+    .sig-text {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    .approval-cta {
+      background: var(--accent-light);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .approval-cta-title {
+      font-weight: 600;
+      font-size: 15px;
+      margin-bottom: 4px;
+    }
+
+    .approval-cta-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="top-badge">🚦 Human Gate 2: Pending Approval</div>
+      <h1>Relaybox Webhook Relay Architecture & Execution Plan</h1>
+      <p style="color: var(--text-muted); margin: 0 0 16px 0; font-size: 14px;">
+        Comprehensive architecture specification, transactional outbox design, Kahn-wave task decomposition, and 100% RTM verification proof.
+      </p>
+      
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Task ID</div>
+          <div class="kpi-val">RELAYBOX-01</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Blast Radius</div>
+          <div class="kpi-val" style="color: #ef4444;">HIGH</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Subtasks</div>
+          <div class="kpi-val">5 Subtasks</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Total LOC Budget</div>
+          <div class="kpi-val">1650 LOC</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Gate B Machine Proof</div>
+          <div class="kpi-val" style="color: var(--green-text);">PASS (100% RTM)</div>
+        </div>
+      </div>
+    </header>
+
+    <section>
+      <h2>📦 PR Breakdown & Subtask Sizing (SRP-PR)</h2>
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+        Every subtask is strictly budgeted ≤ 500 LOC (RULE-PLAN-004). Separate domains are partitioned into dedicated PR groups (RULE-PLAN-007).
+      </p>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>PR Group</th>
+              <th>Domain</th>
+              <th>Subtasks</th>
+              <th>Estimated LOC</th>
+              <th>Target Chain</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>PR-INGEST-01</code></td>
+              <td>ingestion</td>
+              <td><code>ST-01</code> (Entities/Policy/Migrations) + <code>ST-02</code> (Repo/Ingest/Handler)</td>
+              <td>220 + 400 = 620 LOC (Split: 220, 400)</td>
+              <td>Stacked PR → <code>main</code></td>
+            </tr>
+            <tr>
+              <td><code>PR-SUB-01</code></td>
+              <td>subscription</td>
+              <td><code>ST-03</code> (Tenant-scoped Subscription CRUD)</td>
+              <td>300 LOC</td>
+              <td>← <code>ST-01</code></td>
+            </tr>
+            <tr>
+              <td><code>PR-DELIVER-01</code></td>
+              <td>delivery</td>
+              <td><code>ST-04</code> (Outbox Dispatcher, Pool, Retry/DLQ, OTel)</td>
+              <td>450 LOC</td>
+              <td>← <code>ST-01, ST-02</code></td>
+            </tr>
+            <tr>
+              <td><code>PR-OBS-01</code></td>
+              <td>observability</td>
+              <td><code>ST-05</code> (/livez /readyz, slog JSON, Metrics, Middleware)</td>
+              <td>280 LOC</td>
+              <td>← <code>ST-02</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>🌊 Execution DAG (Kahn Waves)</h2>
+      <div class="dag-waves">
+        <div class="wave-card">
+          <div class="wave-num">Wave 1 · Foundation</div>
+          <div style="font-weight: 600; margin-bottom: 4px;">ST-01</div>
+          <div style="font-size: 13px; color: var(--text-muted);">Domain entities, delivery policy, sentinel errors, DB schema migrations</div>
+        </div>
+        <div class="wave-card">
+          <div class="wave-num">Wave 2 · Concurrent Expansion</div>
+          <div style="font-weight: 600; margin-bottom: 4px;">ST-02 ∥ ST-03</div>
+          <div style="font-size: 13px; color: var(--text-muted);">Ingest use case + outbox tx ∥ Tenant subscription CRUD. 100% disjoint file sets.</div>
+        </div>
+        <div class="wave-card">
+          <div class="wave-num">Wave 3 · Delivery & Telemetry</div>
+          <div style="font-weight: 600; margin-bottom: 4px;">ST-04 ∥ ST-05</div>
+          <div style="font-size: 13px; color: var(--text-muted);">Outbox dispatcher worker pool ∥ Health probes, slog JSON, Prometheus metrics.</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>📋 Subtask Details</h2>
+      
+        <div class="card subtask-card">
+            <div class="subtask-header">
+                <span class="subtask-id">ST-01</span>
+                <span class="subtask-title">Domain entities, delivery policy, sentinel errors, DB migrations</span>
+                <span class="badge badge-blue">ingestion</span>
+                <span class="badge badge-amber">220 LOC</span>
+            </div>
+            <div class="subtask-body">
+                <div class="meta-row"><strong>PR Group:</strong> <code>PR-INGEST-01</code> &nbsp;|&nbsp; <strong>Depends On:</strong> <code>None (Root)</code></div>
+                <div class="meta-row"><strong>Verification:</strong> <code>go test -v -race -timeout 90s ./internal/domain/...</code></div>
+                <div class="meta-row"><strong>Test Cases:</strong> <span class="badge badge-purple">TC-01-UNIT</span> <span class="badge badge-purple">TC-02-UNIT</span> <span class="badge badge-purple">TC-14-UNIT</span></div>
+                <details>
+                    <summary><strong>Target Files (8)</strong></summary>
+                    <ul class="file-list"><li><code>internal/domain/event.go</code></li><li><code>internal/domain/subscription.go</code></li><li><code>internal/domain/outbox.go</code></li><li><code>internal/domain/policy.go</code></li><li><code>internal/domain/errors.go</code></li><li><code>internal/domain/clock.go</code></li><li><code>migrations/20260227000001_create_events_subscriptions_outbox.up.sql</code></li><li><code>migrations/20260227000001_create_events_subscriptions_outbox.down.sql</code></li></ul>
+                </details>
+            </div>
+        </div>
+        
+        <div class="card subtask-card">
+            <div class="subtask-header">
+                <span class="subtask-id">ST-02</span>
+                <span class="subtask-title">Event repository, ingest use case (idempotency + outbox tx), POST /v1/events handler</span>
+                <span class="badge badge-blue">ingestion</span>
+                <span class="badge badge-amber">400 LOC</span>
+            </div>
+            <div class="subtask-body">
+                <div class="meta-row"><strong>PR Group:</strong> <code>PR-INGEST-01</code> &nbsp;|&nbsp; <strong>Depends On:</strong> <code>ST-01</code></div>
+                <div class="meta-row"><strong>Verification:</strong> <code>go test -v -race -timeout 90s ./internal/... ./internal/transport/...</code></div>
+                <div class="meta-row"><strong>Test Cases:</strong> <span class="badge badge-purple">TC-01-UNIT</span> <span class="badge badge-purple">TC-02-UNIT</span> <span class="badge badge-purple">TC-03-INT</span> <span class="badge badge-purple">TC-04-EDGE</span> <span class="badge badge-purple">TC-05-INT</span></div>
+                <details>
+                    <summary><strong>Target Files (8)</strong></summary>
+                    <ul class="file-list"><li><code>internal/repository/interfaces.go</code></li><li><code>internal/service/ingest.go</code></li><li><code>internal/service/ingest_test.go</code></li><li><code>internal/infrastructure/postgres/event_repo.go</code></li><li><code>internal/infrastructure/postgres/ingest_integration_test.go</code></li><li><code>internal/transport/http/event_handler.go</code></li><li><code>internal/transport/http/dto/event.go</code></li><li><code>internal/transport/http/handlers_test.go</code></li></ul>
+                </details>
+            </div>
+        </div>
+        
+        <div class="card subtask-card">
+            <div class="subtask-header">
+                <span class="subtask-id">ST-03</span>
+                <span class="subtask-title">Subscription repository, tenant-scoped CRUD handler</span>
+                <span class="badge badge-blue">subscription</span>
+                <span class="badge badge-amber">300 LOC</span>
+            </div>
+            <div class="subtask-body">
+                <div class="meta-row"><strong>PR Group:</strong> <code>PR-SUB-01</code> &nbsp;|&nbsp; <strong>Depends On:</strong> <code>ST-01</code></div>
+                <div class="meta-row"><strong>Verification:</strong> <code>go test -v -race -timeout 90s ./internal/service/... ./internal/transport/...</code></div>
+                <div class="meta-row"><strong>Test Cases:</strong> <span class="badge badge-purple">TC-06-UNIT</span> <span class="badge badge-purple">TC-07-EDGE</span></div>
+                <details>
+                    <summary><strong>Target Files (5)</strong></summary>
+                    <ul class="file-list"><li><code>internal/service/subscription.go</code></li><li><code>internal/service/subscription_test.go</code></li><li><code>internal/infrastructure/postgres/subscription_repo.go</code></li><li><code>internal/transport/http/subscription_handler.go</code></li><li><code>internal/transport/http/dto/subscription.go</code></li></ul>
+                </details>
+            </div>
+        </div>
+        
+        <div class="card subtask-card">
+            <div class="subtask-header">
+                <span class="subtask-id">ST-04</span>
+                <span class="subtask-title">Outbox dispatcher, bounded worker pool, retry/backoff/dead-letter, OTel egress client</span>
+                <span class="badge badge-blue">delivery</span>
+                <span class="badge badge-amber">450 LOC</span>
+            </div>
+            <div class="subtask-body">
+                <div class="meta-row"><strong>PR Group:</strong> <code>PR-DELIVER-01</code> &nbsp;|&nbsp; <strong>Depends On:</strong> <code>ST-01, ST-02</code></div>
+                <div class="meta-row"><strong>Verification:</strong> <code>go test -v -race -timeout 90s ./internal/service/... ./internal/infrastructure/...</code></div>
+                <div class="meta-row"><strong>Test Cases:</strong> <span class="badge badge-purple">TC-08-INT</span> <span class="badge badge-purple">TC-09-EDGE</span> <span class="badge badge-purple">TC-10-INT</span> <span class="badge badge-purple">TC-11-RACE</span> <span class="badge badge-purple">TC-12-UNIT</span> <span class="badge badge-purple">TC-15-INT</span></div>
+                <details>
+                    <summary><strong>Target Files (6)</strong></summary>
+                    <ul class="file-list"><li><code>internal/service/dispatch.go</code></li><li><code>internal/service/dispatch_test.go</code></li><li><code>internal/service/concurrency_test.go</code></li><li><code>internal/infrastructure/postgres/outbox_repo.go</code></li><li><code>internal/infrastructure/httpclient/client.go</code></li><li><code>internal/infrastructure/httpclient/client_test.go</code></li></ul>
+                </details>
+            </div>
+        </div>
+        
+        <div class="card subtask-card">
+            <div class="subtask-header">
+                <span class="subtask-id">ST-05</span>
+                <span class="subtask-title">Observability: /livez /readyz, slog JSON setup, Prometheus metrics, middleware</span>
+                <span class="badge badge-blue">observability</span>
+                <span class="badge badge-amber">280 LOC</span>
+            </div>
+            <div class="subtask-body">
+                <div class="meta-row"><strong>PR Group:</strong> <code>PR-OBS-01</code> &nbsp;|&nbsp; <strong>Depends On:</strong> <code>ST-02</code></div>
+                <div class="meta-row"><strong>Verification:</strong> <code>go test -v -race -timeout 90s ./internal/transport/... ./cmd/...</code></div>
+                <div class="meta-row"><strong>Test Cases:</strong> <span class="badge badge-purple">TC-13-INT</span> <span class="badge badge-purple">TC-14-UNIT</span></div>
+                <details>
+                    <summary><strong>Target Files (7)</strong></summary>
+                    <ul class="file-list"><li><code>internal/transport/http/health.go</code></li><li><code>internal/transport/http/health_test.go</code></li><li><code>internal/transport/http/metrics.go</code></li><li><code>internal/transport/http/metrics_test.go</code></li><li><code>internal/transport/http/middleware.go</code></li><li><code>internal/telemetry/logging.go</code></li><li><code>cmd/relaybox/main.go</code></li></ul>
+                </details>
+            </div>
+        </div>
+        
+    </section>
+
+    <section>
+      <h2>🧪 15 Test Scenarios & Explicit Violation Signals (100% RTM)</h2>
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+        Every test scenario maps directly to a TRD requirement and has an explicit Violation Signal (expected failure mode when invariant is breached, RULE-TEST-004).
+      </p>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Test ID</th>
+              <th>Scenario</th>
+              <th>Type</th>
+              <th>Traceability</th>
+              <th>Violation Signal (Failure Mode)</th>
+            </tr>
+          </thead>
+          <tbody>
+            
+        <tr>
+            <td><code>TC-01-UNIT</code></td>
+            <td><strong>Dedup re-ingest returns original id, one row (AC-01)</strong></td>
+            <td><span class="badge badge-green">UNIT</span></td>
+            <td><code>FR-ING-03, AC-01</code></td>
+            <td><span class="sig-text">Removing unique constraint makes duplicate ingest create second row → duplicate ID returned</span></td>
+        </tr>
+        
+        <tr>
+            <td><code>TC-02-UNIT</code></td>
+            <td><strong>Invalid payload (missing type/key, >256KB) → ErrInvalidEventPayload</strong></td>
+            <td><span class="badge badge-green">UNIT</span></td>
+            <td><code>FR-ING-01</code></td>
+            <td><span class="sig-text">Dropping payload validation makes empty event_type accepted → sentinel error not returned</span></td>
+        </tr>
+        
+        <tr>
+            <td><code>TC-03-INT</code></td>
+            <td><strong>Event + outbox commit atomically; kill-before-dispatch still delivers post-restart</strong></td>
+            <td><span class="badge badge-blue">INT</span></td>
+            <td><code>FR-ING-02, AC-02, NFR-03</code></td>
+            <td><span class="sig-text">If writes are split across transactions, killing process after event commit loses outbox row → delivery fails</span></td>
+        </tr>
+        
+        <tr>
+            <td><code>TC-04-INT</code></td>
+            <td><strong>Transaction failure rolls back BOTH event and outbox rows</strong></td>
+            <td><span class="badge badge-purple">EDGE</span></td>
+            <td><code>FR-ING-02</code></td>
+            <td><span class="sig-text">Partial commit leaves orphaned event row on forced outbox failure → rollback assertion fails</span></td>
+        </tr>
+        
+        <tr>
+            <td><code>TC-05-INT</code></td>
+            <td><strong>Tenant from auth context only; body tenant_id ignored (RULE-SEC-01)</strong></td>
+            <td><span class="badge badge-blue">INT</span></td>
+            <td><code>FR-ING-01, FR-SUB-02</code></td>
+            <td><span class="sig-text">Parsing tenant_id from body lets forged tenant pass → isolation assertion fails</span></td>
+        </tr>
+        
+        <tr>
+            <td><code>TC-06-UNIT</code></td>
+            <td><strong>Subscription CRUD happy path scoped to tenant</strong></td>
+            <td><span class="badge badge-green">UNIT</span></td>
+            <td><code>FR-SUB-01</code></td>
+            <td><span class="sig-text">Broken mapper/insert yields wrong scoping or columns → CRUD assertion fails</span></td>
+        </tr>
+        
+        <tr>
+            <td><code>TC-07-EDGE</code></td>
+            <td><strong>Cross-tenant GET/DELETE → ErrSubscriptionNotFound (404), no mutation (AC-04)</strong></td>
+            <td><span class="badge badge-purple">EDGE</span></td>
+            <td><code>FR-SUB-02, AC-04</code></td>
+            <td><span class="sig-text">If repo omits tenant_id in WHERE, tenant B accesses tenant A's subscription → 404 fails</span></td>
+        </tr>
+        
+        <tr>
+            <td><code>TC-08-INT</code></td>
+            <td><strong>500-then-200 subscriber: delivered via exponential backoff retry (AC-03)</strong></td>
+            <td><span class="badge badge-blue">INT</span></td>
+            <td><code>FR-DEL-02, AC-03</code></td>
+            <td><span class="sig-text">Treating 5xx as permanent dead-letters immediately → delivered after retry fails</span></td>
+        </tr>
+        
+        <tr>
+            <td><code>TC-09-EDGE</code></td>
+            <td><strong>400 subscriber: dead-lettered after max attempts (AC-03)</strong></td>
+            <td><span class="badge badge-purple">EDGE</span></td>
+            <td><code>FR-DEL-02, AC-03</code></td>
+            <td><span class="sig-text">Treating 4xx as retryable loops forever → attempt count assertion fails</span></td>
+        </tr>
+        
+        <tr>
+            <td><code>TC-10-INT</code></td>
+            <td><strong>X-Relaybox-Delivery-Id header stable across retries</strong></td>
+            <td><span class="badge badge-blue">INT</span></td>
+            <td><code>FR-DEL-04</code></td>
+            <td><span class="sig-text">Generating delivery id per attempt changes header across retries → equality fails</span></td>
+        </tr>
+        
+        <tr>
+            <td><code>TC-11-RACE</code></td>
+            <td><strong>20 concurrent ingests + dispatcher running, -race clean (AC-05)</strong></td>
+            <td><span class="badge badge-amber">RACE</span></td>
+            <td><code>FR-DEL-03, AC-05, NFR-01</code></td>
+            <td><span class="sig-text">Removing pool bounds / mutex triggers data race detector under load → test fails</span></td>
+        </tr>
+        
+        <tr>
+            <td><code>TC-12-UNIT</code></td>
+            <td><strong>Pool shutdown: ctx cancel drains workers via WaitGroup, zero leak</strong></td>
+            <td><span class="badge badge-green">UNIT</span></td>
+            <td><code>FR-DEL-03</code></td>
+            <td><span class="sig-text">Omitting WaitGroup.Wait() lets worker goroutines leak past shutdown → leak assertion fails</span></td>
+        </tr>
+        
+        <tr>
+            <td><code>TC-13-INT</code></td>
+            <td><strong>/readyz returns 200 with healthy DB, 503 on DB down (AC-06)</strong></td>
+            <td><span class="badge badge-blue">INT</span></td>
+            <td><code>FR-OBS-01, AC-06</code></td>
+            <td><span class="sig-text">If readyz doesn't ping DB, DB-down returns 200 → 503 assertion fails</span></td>
+        </tr>
+        
+        <tr>
+            <td><code>TC-14-UNIT</code></td>
+            <td><strong>Metrics: bounded labels only, no tenant/UUID in labels; counters registered</strong></td>
+            <td><span class="badge badge-green">UNIT</span></td>
+            <td><code>FR-OBS-02, RULE-OBS-03</code></td>
+            <td><span class="sig-text">Adding tenant_id to Prometheus labels creates unbounded cardinality → label set fails</span></td>
+        </tr>
+        
+        <tr>
+            <td><code>TC-15-INT</code></td>
+            <td><strong>Egress HTTP client injects OTel traceparent header, honors ctx timeout</strong></td>
+            <td><span class="badge badge-blue">INT</span></td>
+            <td><code>FR-DEL-01</code></td>
+            <td><span class="sig-text">Removing OTel propagator drops traceparent; removing timeout stalls hanging requests → fails</span></td>
+        </tr>
+        
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>🛡️ Canonical Invariant Rules (RULE-*) Traceability</h2>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Rule ID</th>
+              <th>Rule Description & Implementation Boundary</th>
+              <th>Status</th>
+              <th>Covering Test Cases</th>
+            </tr>
+          </thead>
+          <tbody>
+            
+    <tr><td><code>RULE-ARCH</code></td><td>Clean 7-layer architecture; domain/service tests import no HTTP/SQL packages</td><td><span class="badge badge-green">COMPLIANT</span></td><td>TC-01-UNIT, TC-06-UNIT</td></tr>
+    <tr><td><code>RULE-DATA</code></td><td>Transactional outbox, expand/contract migrations, audit columns (created_by, timestamps UTC)</td><td><span class="badge badge-green">COMPLIANT</span></td><td>TC-03-INT, TC-04-INT</td></tr>
+    <tr><td><code>RULE-RES</code></td><td>Bounded worker pool (max concurrency), graceful WaitGroup shutdown, ctx propagation</td><td><span class="badge badge-green">COMPLIANT</span></td><td>TC-11-RACE, TC-12-UNIT, TC-15-INT</td></tr>
+    <tr><td><code>RULE-SEC</code></td><td>Tenant strictly from authenticated context; payload tenant_id completely ignored</td><td><span class="badge badge-green">COMPLIANT</span></td><td>TC-05-INT, TC-07-EDGE</td></tr>
+    <tr><td><code>RULE-OBS</code></td><td>Context-bound structured slog JSON, OTel traceparent propagation, bounded metrics, /livez & /readyz</td><td><span class="badge badge-green">COMPLIANT</span></td><td>TC-13-INT, TC-14-UNIT, TC-15-INT</td></tr>
+    
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>✅ Global Verification Proof</h2>
+      <div class="card">
+        <div style="font-size: 13px; line-height: 1.6;">
+          <div><strong>RTM Coverage:</strong> 100% (28/28 TRD Requirements & Acceptance Criteria covered)</div>
+          <div><strong>Schema Validation:</strong> <code>execution_plan.schema.json</code> Valid (0 schema errors)</div>
+          <div><strong>Acyclic Graph:</strong> Kahn Topological Sort Valid (0 cycles, 0 file collisions)</div>
+          <div style="margin-top: 8px;"><strong>Global Build & Test Commands:</strong></div>
+          <div style="margin-top: 4px;">
+            <code>go build ./...</code> &nbsp;&amp;&nbsp; <code>go test -v -race -timeout 90s ./...</code>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="approval-cta">
+      <div>
+        <div class="approval-cta-title">Ready for Human Review & Sign-Off</div>
+        <p class="approval-cta-desc">
+          Highlight any section to leave inline review comments, or click <strong>Approve</strong> in the dashboard (or reply <strong>Approved</strong> in chat) to authorize Coder execution.
+        </p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
