@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"testing"
 	"time"
@@ -55,9 +56,11 @@ func TestPostgresEventRepository_CreateEvent_Idempotent(t *testing.T) {
 		t.Fatalf("first CreateEvent: %v", err)
 	}
 
+	// Second call with same tenant_id and dedup_key should return the original
+	// id AND ErrEventAlreadyExists (idempotent behavior per FR-ING-03).
 	id2, err := eventRepo.CreateEvent(ctx, event)
-	if err != nil {
-		t.Fatalf("second CreateEvent: %v", err)
+	if err != domain.ErrEventAlreadyExists {
+		t.Fatalf("second CreateEvent: expected ErrEventAlreadyExists, got %v", err)
 	}
 	if id2 != id1 {
 		t.Errorf("same dedup key should return original id; got %s, want %s", id2, id1)
@@ -112,6 +115,7 @@ func TestPostgresEventRepository_ConcurrentCreateEvent_Race(t *testing.T) {
 
 	ids := make(map[string]int)
 	errCount := 0
+	successCount := 0
 	for i := 0; i < numGoroutines; i++ {
 		r := <-ch
 		if r.err != nil {
@@ -120,12 +124,20 @@ func TestPostgresEventRepository_ConcurrentCreateEvent_Race(t *testing.T) {
 			}
 			errCount++
 		} else {
+			successCount++
 			ids[r.id]++
 		}
 	}
 
+	// Exactly one should succeed (the INSERT), the rest get ErrEventAlreadyExists
+	if successCount != 1 {
+		t.Errorf("expected exactly 1 successful insert, got %d", successCount)
+	}
 	if len(ids) != 1 {
 		t.Errorf("expected 1 unique event ID stored, got %d: %v", len(ids), ids)
+	}
+	if errCount != numGoroutines-1 {
+		t.Errorf("expected %d ErrEventAlreadyExists, got %d", numGoroutines-1, errCount)
 	}
 
 	var count int
@@ -177,13 +189,17 @@ func TestPostgresEventRepository_GetEventByDedupKey(t *testing.T) {
 func TestPostgresTransactionManager_ExecInTx_Success(t *testing.T) {
 	db := setupTestDB(t)
 	txManager := repoimpl.NewPostgresTransactionManager(db)
-	eventRepo := repoimpl.NewPostgresEventRepository(db)
 	ctx := context.Background()
 
 	event := makeEvent("tenant-alpha")
 
 	err := txManager.ExecInTx(ctx, func(txCtx context.Context, tx interface{}) error {
-		_, err := eventRepo.CreateEvent(txCtx, event)
+		sqlTx := tx.(*sql.Tx)
+		_, err := sqlTx.ExecContext(txCtx,
+			`INSERT INTO events (id, tenant_id, event_type, payload, dedup_key, created_at, created_by)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			event.ID, event.TenantID, event.EventType, event.Payload,
+			event.DedupKey, event.CreatedAt, event.CreatedBy)
 		return err
 	})
 	if err != nil {
@@ -203,14 +219,18 @@ func TestPostgresTransactionManager_ExecInTx_Success(t *testing.T) {
 func TestPostgresTransactionManager_ExecInTx_Rollback(t *testing.T) {
 	db := setupTestDB(t)
 	txManager := repoimpl.NewPostgresTransactionManager(db)
-	eventRepo := repoimpl.NewPostgresEventRepository(db)
 	ctx := context.Background()
 
 	event := makeEvent("tenant-alpha")
 	expectedErr := fmt.Errorf("simulated rollback")
 
 	err := txManager.ExecInTx(ctx, func(txCtx context.Context, tx interface{}) error {
-		_, err := eventRepo.CreateEvent(txCtx, event)
+		sqlTx := tx.(*sql.Tx)
+		_, err := sqlTx.ExecContext(txCtx,
+			`INSERT INTO events (id, tenant_id, event_type, payload, dedup_key, created_at, created_by)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			event.ID, event.TenantID, event.EventType, event.Payload,
+			event.DedupKey, event.CreatedAt, event.CreatedBy)
 		if err != nil {
 			return err
 		}
