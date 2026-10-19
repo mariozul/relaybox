@@ -47,7 +47,8 @@ func (r *postgresOutboxRepository) EnqueueEvent(ctx context.Context, entry *doma
 func (r *postgresOutboxRepository) GetPendingOutboxEntries(ctx context.Context, limit int) ([]domain.OutboxEntry, error) {
 	query := `
 		SELECT id, event_id, subscription_id, status, attempts, next_attempt_at,
-		       COALESCE(last_attempt_at, '0001-01-01T00:00:00Z'), COALESCE(last_attempt_error, ''),
+		       COALESCE(last_attempt_at, '0001-01-01T00:00:00Z'),
+		       COALESCE(last_attempt_error, ''),
 		       delivery_id, created_at
 		FROM outbox
 		WHERE status = 'pending' AND next_attempt_at <= NOW()
@@ -89,15 +90,8 @@ func (r *postgresOutboxRepository) GetPendingOutboxEntries(ctx context.Context, 
 	return entries, nil
 }
 
-// MarkOutboxEntryProcessed updates the status and attempt information for an outbox entry.
-func (r *postgresOutboxRepository) MarkOutboxEntryProcessed(
-	ctx context.Context,
-	id string,
-	status string,
-	attempts int,
-	nextAttemptAt *time.Time,
-	lastAttemptError *string,
-) error {
+// MarkOutboxEntryProcessed updates the status and attempt info of an outbox entry.
+func (r *postgresOutboxRepository) MarkOutboxEntryProcessed(ctx context.Context, id string, status string, attempts int, nextAttemptAt *time.Time, lastAttemptError *string) error {
 	query := `
 		UPDATE outbox
 		SET status = $1, attempts = $2, next_attempt_at = $3,
@@ -114,11 +108,7 @@ func (r *postgresOutboxRepository) MarkOutboxEntryProcessed(
 	return err
 }
 
-// ============================================================
-// Postgres Transaction Manager
-// ============================================================
-
-// compile-time check.
+// compile-time check for TransactionManager.
 var _ repository.TransactionManager = (*postgresTransactionManager)(nil)
 
 type postgresTransactionManager struct {
@@ -132,10 +122,14 @@ func NewPostgresTransactionManager(db *sql.DB) repository.TransactionManager {
 
 // BeginTx starts a new database transaction (RULE-DATA-01).
 func (m *postgresTransactionManager) BeginTx(ctx context.Context) (interface{}, error) {
-	return m.db.BeginTx(ctx, nil)
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	return tx, nil
 }
 
-// CommitTx commits the provided database transaction.
+// CommitTx commits an open transaction (RULE-DATA-01).
 func (m *postgresTransactionManager) CommitTx(ctx context.Context, tx interface{}) error {
 	sqlTx, ok := tx.(*sql.Tx)
 	if !ok {
@@ -144,7 +138,7 @@ func (m *postgresTransactionManager) CommitTx(ctx context.Context, tx interface{
 	return sqlTx.Commit()
 }
 
-// RollbackTx rolls back the provided database transaction.
+// RollbackTx rolls back an open transaction (RULE-DATA-01).
 func (m *postgresTransactionManager) RollbackTx(ctx context.Context, tx interface{}) error {
 	sqlTx, ok := tx.(*sql.Tx)
 	if !ok {
@@ -153,7 +147,7 @@ func (m *postgresTransactionManager) RollbackTx(ctx context.Context, tx interfac
 	return sqlTx.Rollback()
 }
 
-// ExecInTx executes a function within a transaction, automatically rolling back on error (RULE-DATA-01).
+// ExecInTx executes a function within a database transaction with automatic rollback on error (RULE-DATA-01).
 func (m *postgresTransactionManager) ExecInTx(ctx context.Context, fn func(txCtx context.Context, tx interface{}) error) error {
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -162,9 +156,7 @@ func (m *postgresTransactionManager) ExecInTx(ctx context.Context, fn func(txCtx
 
 	err = fn(ctx, tx)
 	if err != nil {
-		if rbErr := tx.Rollback(); rbErr != nil {
-			return err
-		}
+		_ = tx.Rollback()
 		return err
 	}
 
