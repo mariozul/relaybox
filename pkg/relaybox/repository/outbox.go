@@ -12,6 +12,10 @@ type OutboxRepository interface {
 	// EnqueueEvent adds a new entry to the outbox for delivery.
 	EnqueueEvent(ctx context.Context, entry *domain.OutboxEntry) (string, error)
 
+	// EnqueueEventsInTx atomically adds multiple outbox entries within a provided transaction.
+	// This ensures transactional atomicity for multi-subscriber delivery (RULE-DATA-01).
+	EnqueueEventsInTx(ctx context.Context, tx interface{}, entries []domain.OutboxEntry) error
+
 	// GetPendingOutboxEntries retrieves entries ready for delivery, limited by count.
 	GetPendingOutboxEntries(ctx context.Context, limit int) ([]domain.OutboxEntry, error)
 

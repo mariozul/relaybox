@@ -2,6 +2,14 @@ package domain
 
 import "time"
 
+// Outbox status constants for delivery lifecycle tracking.
+const (
+	OutboxStatusPending    = "pending"
+	OutboxStatusDelivered  = "delivered"
+	OutboxStatusFailed     = "failed"
+	OutboxStatusDeadLetter = "dead_letter"
+)
+
 // OutboxEntry represents a pending delivery entry in the transactional outbox.
 type OutboxEntry struct {
 	ID               string    `json:"id"`

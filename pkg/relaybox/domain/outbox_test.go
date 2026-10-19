@@ -17,7 +17,7 @@ func TestOutboxEntryEntity(t *testing.T) {
 			ID:               "ob-001",
 			EventID:          "evt-001",
 			SubscriptionID:   "sub-001",
-			Status:           "pending",
+			Status:           domain.OutboxStatusPending,
 			Attempts:         0,
 			NextAttemptAt:    now,
 			LastAttemptAt:    now,
@@ -35,8 +35,8 @@ func TestOutboxEntryEntity(t *testing.T) {
 		if entry.SubscriptionID != "sub-001" {
 			t.Errorf("expected SubscriptionID sub-001, got %s", entry.SubscriptionID)
 		}
-		if entry.Status != "pending" {
-			t.Errorf("expected Status pending, got %s", entry.Status)
+		if entry.Status != domain.OutboxStatusPending {
+			t.Errorf("expected Status %s, got %s", domain.OutboxStatusPending, entry.Status)
 		}
 		if entry.Attempts != 0 {
 			t.Errorf("expected Attempts 0, got %d", entry.Attempts)
@@ -51,7 +51,7 @@ func TestOutboxEntryEntity(t *testing.T) {
 			ID:               "ob-002",
 			EventID:          "evt-001",
 			SubscriptionID:   "sub-002",
-			Status:           "failed",
+			Status:           domain.OutboxStatusFailed,
 			Attempts:         3,
 			NextAttemptAt:    now.Add(5 * time.Minute),
 			LastAttemptAt:    now,
@@ -60,8 +60,8 @@ func TestOutboxEntryEntity(t *testing.T) {
 			CreatedAt:        now.Add(-10 * time.Minute),
 		}
 
-		if entry.Status != "failed" {
-			t.Errorf("expected Status failed, got %s", entry.Status)
+		if entry.Status != domain.OutboxStatusFailed {
+			t.Errorf("expected Status %s, got %s", domain.OutboxStatusFailed, entry.Status)
 		}
 		if entry.Attempts != 3 {
 			t.Errorf("expected Attempts 3, got %d", entry.Attempts)
@@ -70,4 +70,27 @@ func TestOutboxEntryEntity(t *testing.T) {
 			t.Errorf("expected LastAttemptError 'connection timeout', got %s", entry.LastAttemptError)
 		}
 	})
+}
+
+func TestOutboxStatusConstants(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		got   string
+		want  string
+	}{
+		{name: "OutboxStatusPending", got: domain.OutboxStatusPending, want: "pending"},
+		{name: "OutboxStatusDelivered", got: domain.OutboxStatusDelivered, want: "delivered"},
+		{name: "OutboxStatusFailed", got: domain.OutboxStatusFailed, want: "failed"},
+		{name: "OutboxStatusDeadLetter", got: domain.OutboxStatusDeadLetter, want: "dead_letter"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.got != tc.want {
+				t.Errorf("outbox status constant %s = %s, want %s", tc.name, tc.got, tc.want)
+			}
+		})
+	}
 }

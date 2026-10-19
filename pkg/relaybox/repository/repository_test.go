@@ -68,12 +68,15 @@ func (s *subRepoVerifier) ListSubscriptions(ctx context.Context, tenantID string
 	return nil, nil
 }
 func (s *subRepoVerifier) UpdateSubscription(ctx context.Context, sub *domain.Subscription) error { return nil }
-func (s *subRepoVerifier) DeleteSubscription(ctx context.Context, tenantID, id string) error    { return nil }
+func (s *subRepoVerifier) DeleteSubscription(ctx context.Context, tenantID, id string) error { return nil }
 
 type outboxRepoVerifier struct{}
 
 func (o *outboxRepoVerifier) EnqueueEvent(ctx context.Context, entry *domain.OutboxEntry) (string, error) {
 	return "", nil
+}
+func (o *outboxRepoVerifier) EnqueueEventsInTx(ctx context.Context, tx interface{}, entries []domain.OutboxEntry) error {
+	return nil
 }
 func (o *outboxRepoVerifier) GetPendingOutboxEntries(ctx context.Context, limit int) ([]domain.OutboxEntry, error) {
 	return nil, nil
@@ -84,9 +87,15 @@ func (o *outboxRepoVerifier) MarkOutboxEntryProcessed(ctx context.Context, id st
 
 type txManagerVerifier struct{}
 
-func (t *txManagerVerifier) BeginTx(ctx context.Context) (interface{}, error)           { return nil, nil }
-func (t *txManagerVerifier) CommitTx(ctx context.Context, tx interface{}) error          { return nil }
-func (t *txManagerVerifier) RollbackTx(ctx context.Context, tx interface{}) error        { return nil }
-func (t *txManagerVerifier) ExecInTx(ctx context.Context, fn func(context.Context, interface{}) error) error {
+func (t *txManagerVerifier) BeginTx(ctx context.Context) (interface{}, error) {
+	return nil, nil
+}
+func (t *txManagerVerifier) CommitTx(ctx context.Context, tx interface{}) error {
+	return nil
+}
+func (t *txManagerVerifier) RollbackTx(ctx context.Context, tx interface{}) error {
+	return nil
+}
+func (t *txManagerVerifier) ExecInTx(ctx context.Context, fn func(txCtx context.Context, tx interface{}) error) error {
 	return nil
 }
