@@ -21,12 +21,14 @@ import (
 type mockEventRepo struct {
 	mu           sync.Mutex
 	eventsByKey  map[string]*domain.Event // key = tenantID + "|" + dedupKey
+	eventsByID   map[string]*domain.Event // key = event ID
 	createCalled int
 }
 
 func newMockEventRepo() *mockEventRepo {
 	return &mockEventRepo{
 		eventsByKey: make(map[string]*domain.Event),
+		eventsByID:  make(map[string]*domain.Event),
 	}
 }
 
@@ -45,6 +47,7 @@ func (m *mockEventRepo) CreateEvent(ctx context.Context, event *domain.Event) (s
 		return existing.ID, domain.ErrEventAlreadyExists
 	}
 	m.eventsByKey[key] = event
+	m.eventsByID[event.ID] = event
 	return event.ID, nil
 }
 
@@ -53,6 +56,16 @@ func (m *mockEventRepo) GetEventByDedupKey(ctx context.Context, tenantID, dedupK
 	defer m.mu.Unlock()
 	key := m.mkKey(tenantID, dedupKey)
 	ev, ok := m.eventsByKey[key]
+	if !ok {
+		return nil, nil
+	}
+	return ev, nil
+}
+
+func (m *mockEventRepo) GetEventByID(ctx context.Context, id string) (*domain.Event, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ev, ok := m.eventsByID[id]
 	if !ok {
 		return nil, nil
 	}

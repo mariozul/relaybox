@@ -82,3 +82,29 @@ func (r *postgresEventRepository) GetEventByDedupKey(ctx context.Context, tenant
 	}
 	return event, nil
 }
+
+// GetEventByID retrieves an event by its ID. Returns nil, nil if not found.
+func (r *postgresEventRepository) GetEventByID(ctx context.Context, id string) (*domain.Event, error) {
+	query := `
+		SELECT id, tenant_id, event_type, payload, dedup_key, created_at, created_by
+		FROM events
+		WHERE id = $1
+	`
+	event := &domain.Event{}
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&event.ID,
+		&event.TenantID,
+		&event.EventType,
+		&event.Payload,
+		&event.DedupKey,
+		&event.CreatedAt,
+		&event.CreatedBy,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return event, nil
+}

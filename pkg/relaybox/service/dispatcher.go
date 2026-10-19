@@ -6,6 +6,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math"
@@ -48,6 +49,7 @@ type Dispatcher interface {
 type dispatcher struct {
 	outboxRepo repository.OutboxRepository
 	subRepo    repository.SubscriptionRepository
+	eventRepo  repository.EventRepository
 	httpClient httpclient.Client
 	workerPool worker.WorkerPool
 	clock      func() time.Time
@@ -57,6 +59,7 @@ type dispatcher struct {
 func NewDispatcher(
 	outboxRepo repository.OutboxRepository,
 	subRepo repository.SubscriptionRepository,
+	eventRepo repository.EventRepository,
 	httpClient httpclient.Client,
 	pool worker.WorkerPool,
 	clock func() time.Time,
@@ -64,6 +67,7 @@ func NewDispatcher(
 	return &dispatcher{
 		outboxRepo: outboxRepo,
 		subRepo:    subRepo,
+		eventRepo:  eventRepo,
 		httpClient: httpClient,
 		workerPool: pool,
 		clock:      clock,
@@ -129,7 +133,7 @@ func (d *dispatcher) deliverEntry(ctx context.Context, entry *domain.OutboxEntry
 		"attempt", entry.Attempts+1,
 	)
 
-	// Resolve the subscription to get the target URL
+	// Resolve the subscription to get the target URL and tenant context.
 	sub, err := d.resolveSubscription(ctx, entry)
 	if err != nil {
 		logger.ErrorContext(ctx, "failed to resolve subscription for outbox entry", "err", err)
@@ -137,13 +141,34 @@ func (d *dispatcher) deliverEntry(ctx context.Context, entry *domain.OutboxEntry
 		return
 	}
 
-	// Send the HTTP POST
+	// Fetch the event payload to include in the delivery body.
+	evt, err := d.eventRepo.GetEventByID(ctx, entry.EventID)
+	if err != nil {
+		logger.ErrorContext(ctx, "failed to fetch event for outbox entry", "err", err)
+		d.markDeadLetter(ctx, entry, fmt.Sprintf("event fetch failed: %v", err))
+		return
+	}
+	if evt == nil {
+		logger.ErrorContext(ctx, "event not found for outbox entry")
+		d.markDeadLetter(ctx, entry, "event not found")
+		return
+	}
+
+	// Build the delivery payload: wrap the event payload with metadata.
+	body, err := d.buildDeliveryPayload(evt, entry)
+	if err != nil {
+		logger.ErrorContext(ctx, "failed to build delivery payload", "err", err)
+		d.markDeadLetter(ctx, entry, fmt.Sprintf("build payload failed: %v", err))
+		return
+	}
+
+	// Send the HTTP POST with delivery headers (FR-DEL-01, FR-DEL-04).
 	headers := map[string]string{
 		"X-Relaybox-Delivery-Id": entry.DeliveryID,
 		"Content-Type":           "application/json",
 	}
 
-	resp, err := d.httpClient.Post(ctx, sub.TargetURL, headers, nil)
+	resp, err := d.httpClient.Post(ctx, sub.TargetURL, headers, body)
 	if err != nil {
 		logger.WarnContext(ctx, "delivery attempt failed (network error)", "err", err)
 		d.handleDeliveryFailure(ctx, entry, fmt.Sprintf("network error: %v", err))
@@ -152,24 +177,41 @@ func (d *dispatcher) deliverEntry(ctx context.Context, entry *domain.OutboxEntry
 	defer httpclient.EnsureResponseBodyClosed(resp)
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		// Success (2xx): mark as delivered (FR-DEL-02)
+		// Success (2xx): mark as delivered (FR-DEL-02).
 		d.markDelivered(ctx, entry)
 		logger.InfoContext(ctx, "event delivered successfully")
 	} else {
 		// Non-2xx response — retry with backoff; dead-letter after max attempts
-		// (FR-DEL-02: 4xx is dead-lettered after N attempts, 5xx retried)
+		// (FR-DEL-02: 4xx is dead-lettered after N attempts, 5xx retried).
 		errStr := fmt.Sprintf("subscriber returned %d", resp.StatusCode)
 		logger.WarnContext(ctx, "delivery failure (non-2xx)", "status", resp.StatusCode)
 		d.handleDeliveryFailure(ctx, entry, errStr)
 	}
 }
 
+// buildDeliveryPayload creates the JSON body for the webhook delivery,
+// including the original event payload and metadata.
+func (d *dispatcher) buildDeliveryPayload(evt *domain.Event, entry *domain.OutboxEntry) ([]byte, error) {
+	payload := map[string]interface{}{
+		"event_id":     evt.ID,
+		"event_type":   evt.EventType,
+		"payload":      json.RawMessage(evt.Payload),
+		"delivery_id":  entry.DeliveryID,
+		"attempt":      entry.Attempts + 1,
+	}
+	return json.Marshal(payload)
+}
+
 // resolveSubscription looks up the subscription for the given outbox entry.
+// The entry's subscription_id must exist and be accessible.
 func (d *dispatcher) resolveSubscription(ctx context.Context, entry *domain.OutboxEntry) (*domain.Subscription, error) {
 	if entry.SubscriptionID == "" {
 		return nil, fmt.Errorf("outbox entry %s has no subscription ID", entry.ID)
 	}
 
+	// Fetch subscription without tenant scope — the outbox entry already
+	// associates the subscription. The subscription itself is tenant-scoped
+	// in the repository.
 	sub, err := d.subRepo.GetSubscriptionByID(ctx, "", entry.SubscriptionID)
 	if err != nil {
 		return nil, fmt.Errorf("get subscription %s: %w", entry.SubscriptionID, err)

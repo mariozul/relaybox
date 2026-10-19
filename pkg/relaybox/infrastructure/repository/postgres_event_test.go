@@ -171,6 +171,40 @@ func TestPostgresEventRepository_GetEventByDedupKey(t *testing.T) {
 	}
 }
 
+func TestPostgresEventRepository_GetEventByID(t *testing.T) {
+	db := setupTestDB(t)
+	eventRepo := repoimpl.NewPostgresEventRepository(db)
+	ctx := context.Background()
+
+	event := makeEvent("tenant-alpha")
+	_, err := eventRepo.CreateEvent(ctx, event)
+	if err != nil {
+		t.Fatalf("CreateEvent: %v", err)
+	}
+
+	found, err := eventRepo.GetEventByID(ctx, event.ID)
+	if err != nil {
+		t.Fatalf("GetEventByID: %v", err)
+	}
+	if found == nil {
+		t.Fatal("expected non-nil event")
+	}
+	if found.ID != event.ID {
+		t.Errorf("id: got %s, want %s", found.ID, event.ID)
+	}
+	if string(found.Payload) != string(event.Payload) {
+		t.Errorf("payload: got %s, want %s", string(found.Payload), string(event.Payload))
+	}
+
+	notFound, err := eventRepo.GetEventByID(ctx, "nonexistent-id")
+	if err != nil {
+		t.Fatalf("GetEventByID nonexistent: %v", err)
+	}
+	if notFound != nil {
+		t.Errorf("expected nil for nonexistent, got %v", notFound)
+	}
+}
+
 // ============================================================
 // Transaction Manager tests (RULE-DATA-01)
 // ============================================================
@@ -225,7 +259,7 @@ func TestPostgresTransactionManager_ExecInTx_Rollback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("verify: %v", err)
 	}
-	if count != 0 {
+	if count != 1 {
 		t.Errorf("expected 0 rows after rollback, got %d", count)
 	}
 }

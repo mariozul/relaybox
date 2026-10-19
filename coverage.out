@@ -1,0 +1,27 @@
+mode: atomic
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:46.2,47.1 4 4
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:48.2,53.1 4 4
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:55.2,56.34 4 4
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:57.3,58.1 1 6
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:60.2,60.13 1 4
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:65.2,66.6 2 6
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:67.3,67.10 1 26
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:70.4,70.8 1 6
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:71.5,71.12 1 16
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:73.6,73.13 1 10
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:74.7,75.1 1 0
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:76.6,76.25 1 10
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:78.6,78.12 1 6
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:82.4,82.11 1 20
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:83.5,84.1 1 0
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:85.4,85.23 1 20
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:92.2,92.15 1 30
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:92.17,92.32 1 30
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:93.2,93.13 1 30
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:99.2,99.22 1 34
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:100.3,100.49 1 1
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:103.2,103.9 1 33
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:105.3,105.13 1 32
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:107.3,107.22 1 1
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:113.2,114.1 1 4
+github.com/mariozul/relaybox/pkg/relaybox/worker/workerpool.go:120.2,122.1 2 4

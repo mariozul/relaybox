@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -109,13 +110,64 @@ func (m *dispOutboxRepo) MarkOutboxEntryProcessed(_ context.Context, id, status 
 	return nil
 }
 
+// dispEventRepo is a mock EventRepository for dispatcher tests.
+type dispEventRepo struct {
+	sync.Mutex
+	events map[string]*domain.Event
+}
+
+func newDispEventRepo() *dispEventRepo {
+	return &dispEventRepo{events: make(map[string]*domain.Event)}
+}
+
+func (m *dispEventRepo) add(t *testing.T, e *domain.Event) {
+	t.Helper()
+	m.Lock()
+	defer m.Unlock()
+	m.events[e.ID] = e
+}
+
+func (m *dispEventRepo) CreateEvent(_ context.Context, e *domain.Event) (string, error) {
+	m.Lock()
+	defer m.Unlock()
+	m.events[e.ID] = e
+	return e.ID, nil
+}
+
+func (m *dispEventRepo) GetEventByDedupKey(_ context.Context, _, _ string) (*domain.Event, error) {
+	return nil, nil
+}
+
+func (m *dispEventRepo) GetEventByID(_ context.Context, id string) (*domain.Event, error) {
+	m.Lock()
+	defer m.Unlock()
+	e, ok := m.events[id]
+	if !ok {
+		return nil, nil
+	}
+	return e, nil
+}
+
+// Helper to create a test event linked to an outbox entry.
+func makeEventForOB(entry *domain.OutboxEntry) *domain.Event {
+	return &domain.Event{
+		ID:        entry.EventID,
+		TenantID:  "t1",
+		EventType: "test.event",
+		Payload:   []byte(`{"key":"value"}`),
+		DedupKey:  "dedup-" + entry.ID,
+		CreatedAt: testClock(),
+		CreatedBy: "test",
+	}
+}
+
 // --- Tests ---
 
-func runDispatcher(t *testing.T, outboxRepo *dispOutboxRepo, subRepo *dispSubRepo, timeout time.Duration) {
+func runDispatcher(t *testing.T, obRepo *dispOutboxRepo, subRepo *dispSubRepo, evtRepo *dispEventRepo, timeout time.Duration) {
 	t.Helper()
 	hc := httpclient.NewDefaultHTTPClient(5 * time.Second)
 	pool := worker.NewWorkerPool(context.Background(), 5, 20)
-	disp := service.NewDispatcher(outboxRepo, subRepo, hc, pool, testClock)
+	disp := service.NewDispatcher(obRepo, subRepo, evtRepo, hc, pool, testClock)
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -133,8 +185,18 @@ func makeOB(id, subID, deliveryID string) *domain.OutboxEntry {
 		ID: id, EventID: "evt-" + id, SubscriptionID: subID,
 		Status: "pending", Attempts: 0,
 		NextAttemptAt: testClock().Add(-1 * time.Minute),
-		DeliveryID: deliveryID,
-		CreatedAt: testClock().Add(-10 * time.Minute),
+		DeliveryID:    deliveryID,
+		CreatedAt:     testClock().Add(-10 * time.Minute),
+	}
+}
+
+func makeSub(t *testing.T, id, tenantID, targetURL string) *domain.Subscription {
+	t.Helper()
+	return &domain.Subscription{
+		ID: id, TenantID: tenantID, EventType: "test.event",
+		TargetURL: targetURL,
+		CreatedAt: testClock(), CreatedBy: tenantID,
+		UpdatedAt: testClock(), UpdatedBy: tenantID,
 	}
 }
 
@@ -143,23 +205,54 @@ func TestDispatcher(t *testing.T) {
 
 	t.Run("delivers pending events on start", func(t *testing.T) {
 		t.Parallel()
-		var delivered int32
+		var (
+			delivered    int32
+			receivedBody string
+			mu           sync.Mutex
+		)
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			atomic.AddInt32(&delivered, 1)
+			buf := make([]byte, r.ContentLength)
+			r.Body.Read(buf)
+			r.Body.Close()
+			mu.Lock()
+			receivedBody = string(buf)
+			mu.Unlock()
 			w.WriteHeader(http.StatusOK)
 		}))
 		defer srv.Close()
 
 		sub := newDispSubRepo()
-		sub.add(t, &domain.Subscription{ID: "s1", TenantID: "t1",
-			TargetURL: srv.URL, CreatedAt: testClock(), CreatedBy: "t",
-			UpdatedAt: testClock(), UpdatedBy: "t"})
-		ob := newDispOutboxRepo()
-		ob.add(t, makeOB("ob1", "s1", "d1"))
+		sub.add(t, makeSub(t, "s1", "t1", srv.URL))
 
-		runDispatcher(t, ob, sub, 2*time.Second)
+		ob := newDispOutboxRepo()
+		obEntry := makeOB("ob1", "s1", "d1")
+		ob.add(t, obEntry)
+
+		evtRepo := newDispEventRepo()
+		evtRepo.add(t, makeEventForOB(obEntry))
+
+		runDispatcher(t, ob, sub, evtRepo, 2*time.Second)
+
 		if atomic.LoadInt32(&delivered) == 0 {
 			t.Error("expected at least one delivery")
+		}
+
+		// Verify the delivery body contains expected fields.
+		mu.Lock()
+		body := receivedBody
+		mu.Unlock()
+		if body != "" {
+			var payload map[string]interface{}
+			if err := json.Unmarshal([]byte(body), &payload); err != nil {
+				t.Fatalf("failed to unmarshal delivery body: %v", err)
+			}
+			if payload["event_id"] != "evt-ob1" {
+				t.Errorf("expected event_id evt-ob1, got %v", payload["event_id"])
+			}
+			if payload["delivery_id"] != "d1" {
+				t.Errorf("expected delivery_id d1, got %v", payload["delivery_id"])
+			}
 		}
 	})
 
@@ -176,19 +269,23 @@ func TestDispatcher(t *testing.T) {
 		defer srv.Close()
 
 		sub := newDispSubRepo()
-		sub.add(t, &domain.Subscription{ID: "s2", TenantID: "t2",
-			TargetURL: srv.URL, CreatedAt: testClock(), CreatedBy: "t",
-			UpdatedAt: testClock(), UpdatedBy: "t"})
-		ob := newDispOutboxRepo()
-		ob.add(t, makeOB("ob2", "s2", "d2"))
+		sub.add(t, makeSub(t, "s2", "t2", srv.URL))
 
-		runDispatcher(t, ob, sub, 5*time.Second)
+		ob := newDispOutboxRepo()
+		obEntry := makeOB("ob2", "s2", "d2")
+		ob.add(t, obEntry)
+
+		evtRepo := newDispEventRepo()
+		evtRepo.add(t, makeEventForOB(obEntry))
+
+		runDispatcher(t, ob, sub, evtRepo, 6*time.Second)
+
 		if attempt.Load() < 3 {
 			t.Errorf("expected >=3 attempts, got %d", attempt.Load())
 		}
 	})
 
-	t.Run("dead-letters 4xx after max attempts", func(t *testing.T) {
+	t.Run("dead-letters after max attempts", func(t *testing.T) {
 		t.Parallel()
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
@@ -196,13 +293,16 @@ func TestDispatcher(t *testing.T) {
 		defer srv.Close()
 
 		sub := newDispSubRepo()
-		sub.add(t, &domain.Subscription{ID: "s3", TenantID: "t3",
-			TargetURL: srv.URL, CreatedAt: testClock(), CreatedBy: "t",
-			UpdatedAt: testClock(), UpdatedBy: "t"})
-		ob := newDispOutboxRepo()
-		ob.add(t, makeOB("ob3", "s3", "d3"))
+		sub.add(t, makeSub(t, "s3", "t3", srv.URL))
 
-		runDispatcher(t, ob, sub, 5*time.Second)
+		ob := newDispOutboxRepo()
+		obEntry := makeOB("ob3", "s3", "d3")
+		ob.add(t, obEntry)
+
+		evtRepo := newDispEventRepo()
+		evtRepo.add(t, makeEventForOB(obEntry))
+
+		runDispatcher(t, ob, sub, evtRepo, 6*time.Second)
 
 		ob.Lock()
 		e := ob.entries["ob3"]
@@ -225,13 +325,17 @@ func TestDispatcher(t *testing.T) {
 		defer srv.Close()
 
 		sub := newDispSubRepo()
-		sub.add(t, &domain.Subscription{ID: "s4", TenantID: "t4",
-			TargetURL: srv.URL, CreatedAt: testClock(), CreatedBy: "t",
-			UpdatedAt: testClock(), UpdatedBy: "t"})
-		ob := newDispOutboxRepo()
-		ob.add(t, makeOB("ob4", "s4", "del-abc"))
+		sub.add(t, makeSub(t, "s4", "t4", srv.URL))
 
-		runDispatcher(t, ob, sub, 2*time.Second)
+		ob := newDispOutboxRepo()
+		obEntry := makeOB("ob4", "s4", "del-abc")
+		ob.add(t, obEntry)
+
+		evtRepo := newDispEventRepo()
+		evtRepo.add(t, makeEventForOB(obEntry))
+
+		runDispatcher(t, ob, sub, evtRepo, 2*time.Second)
+
 		select {
 		case h := <-ch:
 			if h != "del-abc" {
@@ -252,19 +356,48 @@ func TestDispatcher(t *testing.T) {
 		defer srv.Close()
 
 		sub := newDispSubRepo()
-		sub.add(t, &domain.Subscription{ID: "s5", TenantID: "t5",
-			TargetURL: srv.URL, CreatedAt: testClock(), CreatedBy: "t",
-			UpdatedAt: testClock(), UpdatedBy: "t"})
+		sub.add(t, makeSub(t, "s5", "t5", srv.URL))
+
 		ob := newDispOutboxRepo()
+		evtRepo := newDispEventRepo()
 		for i := 0; i < 20; i++ {
-			ob.add(t, makeOB(fmt.Sprintf("oc-%02d", i), "s5", fmt.Sprintf("dc-%02d", i)))
+			obEntry := makeOB(fmt.Sprintf("oc-%02d", i), "s5", fmt.Sprintf("dc-%02d", i))
+			ob.add(t, obEntry)
+			evtRepo.add(t, makeEventForOB(obEntry))
 		}
 
-		runDispatcher(t, ob, sub, 3*time.Second)
+		runDispatcher(t, ob, sub, evtRepo, 3*time.Second)
 		if d := atomic.LoadInt32(&delivered); d == 0 {
 			t.Error("expected at least some deliveries")
 		} else {
 			t.Logf("delivered %d events", d)
+		}
+	})
+
+	t.Run("dead-letters on missing event", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer srv.Close()
+
+		sub := newDispSubRepo()
+		sub.add(t, makeSub(t, "s6", "t6", srv.URL))
+
+		ob := newDispOutboxRepo()
+		obEntry := makeOB("ob6", "s6", "d6")
+		ob.add(t, obEntry)
+
+		// Event repository is empty — event not found.
+		evtRepo := newDispEventRepo()
+
+		runDispatcher(t, ob, sub, evtRepo, 2*time.Second)
+
+		ob.Lock()
+		e := ob.entries["ob6"]
+		ob.Unlock()
+		if e.Status != "dead_letter" {
+			t.Errorf("expected dead_letter for missing event, got %q", e.Status)
 		}
 	})
 }
