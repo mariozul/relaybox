@@ -424,3 +424,106 @@ func TestSubscriptionService_EmptyList(t *testing.T) {
 		t.Fatalf("expected 0 subscriptions, got %d", len(subs))
 	}
 }
+
+func TestSubscriptionService_GetValidation(t *testing.T) {
+	fakeRepo := newFakeSubRepo()
+	svc := service.NewSubscriptionService(fakeRepo, fixedClock)
+	ctx := context.Background()
+
+	t.Run("empty tenant returns ErrUnauthorized", func(t *testing.T) {
+		_, err := svc.GetSubscription(ctx, "", "some-id")
+		if err != domain.ErrUnauthorized {
+			t.Errorf("expected ErrUnauthorized, got %v", err)
+		}
+	})
+
+	t.Run("empty id returns ErrInvalidInput", func(t *testing.T) {
+		_, err := svc.GetSubscription(ctx, "tenant-a", "")
+		if err != domain.ErrInvalidInput {
+			t.Errorf("expected ErrInvalidInput, got %v", err)
+		}
+	})
+}
+
+func TestSubscriptionService_ListValidation(t *testing.T) {
+	fakeRepo := newFakeSubRepo()
+	svc := service.NewSubscriptionService(fakeRepo, fixedClock)
+	ctx := context.Background()
+
+	t.Run("empty tenant returns ErrUnauthorized", func(t *testing.T) {
+		_, err := svc.ListSubscriptions(ctx, "")
+		if err != domain.ErrUnauthorized {
+			t.Errorf("expected ErrUnauthorized, got %v", err)
+		}
+	})
+}
+
+func TestSubscriptionService_UpdateValidation(t *testing.T) {
+	fakeRepo := newFakeSubRepo()
+	svc := service.NewSubscriptionService(fakeRepo, fixedClock)
+	ctx := context.Background()
+
+	t.Run("empty tenant returns ErrUnauthorized", func(t *testing.T) {
+		newURL := "https://example.com/webhook"
+		err := svc.UpdateSubscription(ctx, "", "some-id", &dto.UpdateSubscriptionRequest{
+			TargetURL: &newURL,
+		})
+		if err != domain.ErrUnauthorized {
+			t.Errorf("expected ErrUnauthorized, got %v", err)
+		}
+	})
+
+	t.Run("empty id returns ErrInvalidInput", func(t *testing.T) {
+		newURL := "https://example.com/webhook"
+		err := svc.UpdateSubscription(ctx, "tenant-a", "", &dto.UpdateSubscriptionRequest{
+			TargetURL: &newURL,
+		})
+		if err != domain.ErrInvalidInput {
+			t.Errorf("expected ErrInvalidInput, got %v", err)
+		}
+	})
+
+	t.Run("nil fields returns ErrInvalidInput", func(t *testing.T) {
+		err := svc.UpdateSubscription(ctx, "tenant-a", "some-id", &dto.UpdateSubscriptionRequest{})
+		if err != domain.ErrInvalidInput {
+			t.Errorf("expected ErrInvalidInput, got %v", err)
+		}
+	})
+
+	t.Run("update non-existent returns ErrSubscriptionNotFound", func(t *testing.T) {
+		newURL := "https://example.com/webhook"
+		err := svc.UpdateSubscription(ctx, "tenant-a", "non-existent-id", &dto.UpdateSubscriptionRequest{
+			TargetURL: &newURL,
+		})
+		if err != domain.ErrSubscriptionNotFound {
+			t.Errorf("expected ErrSubscriptionNotFound, got %v", err)
+		}
+	})
+}
+
+func TestSubscriptionService_DeleteValidation(t *testing.T) {
+	fakeRepo := newFakeSubRepo()
+	svc := service.NewSubscriptionService(fakeRepo, fixedClock)
+	ctx := context.Background()
+
+	t.Run("empty tenant returns ErrUnauthorized", func(t *testing.T) {
+		err := svc.DeleteSubscription(ctx, "", "some-id")
+		if err != domain.ErrUnauthorized {
+			t.Errorf("expected ErrUnauthorized, got %v", err)
+		}
+	})
+
+	t.Run("empty id returns ErrInvalidInput", func(t *testing.T) {
+		err := svc.DeleteSubscription(ctx, "tenant-a", "")
+		if err != domain.ErrInvalidInput {
+			t.Errorf("expected ErrInvalidInput, got %v", err)
+		}
+	})
+
+	t.Run("delete non-existent returns ErrSubscriptionNotFound", func(t *testing.T) {
+		err := svc.DeleteSubscription(ctx, "tenant-a", "non-existent-id")
+		if err != domain.ErrSubscriptionNotFound {
+			t.Errorf("expected ErrSubscriptionNotFound, got %v", err)
+		}
+	})
+}
