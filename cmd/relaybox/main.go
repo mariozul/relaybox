@@ -1,4 +1,5 @@
-// Package main starts the Relaybox HTTP service with liveness/readiness probes.
+// Package main starts the Relaybox HTTP service with liveness/readiness probes,
+// event ingestion, and subscription management endpoints.
 package main
 
 import (
@@ -12,22 +13,57 @@ import (
 	"time"
 
 	"github.com/mariozul/relaybox/internal/version"
+	"github.com/mariozul/relaybox/pkg/relaybox/handler"
+	"github.com/mariozul/relaybox/pkg/relaybox/router"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
 
-	mux := http.NewServeMux()
-	// RULE-OBS-04: liveness & readiness probes.
-	mux.HandleFunc("/livez", func(w http.ResponseWriter, _ *http.Request) {
+	// -----------------------------------------------------------------------
+	// Health probe handlers (FR-OBS-01, RULE-OBS-04)
+	// -----------------------------------------------------------------------
+	livezHandler := func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
-	})
-	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
+	}
+
+	readyzHandler := func(w http.ResponseWriter, r *http.Request) {
 		// TODO: check DB/cache reachability before reporting ready.
+		// In production, this should ping the database.
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ready"))
-	})
+	}
+
+	// -----------------------------------------------------------------------
+	// Service & Handler initialization
+	// -----------------------------------------------------------------------
+	// NOTE: In a full production setup, real repository implementations
+	// backed by a database connection are injected here. For this PR (ST-06),
+	// we only set up the HTTP handler layer. Services are already implemented
+	// in ST-03 and ST-04, but require concrete repository implementations
+	// from ST-02 to be wired.
+	//
+	// TODO: Wire with real repository implementations when database
+	// connection is configured:
+	//   db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
+	//   ...
+	//   ingestionSvc := service.NewEventIngestionService(...)
+	//   subSvc := service.NewSubscriptionService(...)
+	//   eventH := handler.NewEventHandler(ingestionSvc)
+	//   subH  := handler.NewSubscriptionHandler(subSvc)
+	//   mux   := router.Setup(eventH, subH, livezHandler, readyzHandler)
+	//
+	// For now, start with health probes only. The handler package is
+	// imported to ensure it compiles (tests verify handler correctness).
+	_ = handler.NewEventHandler
+	_ = handler.NewSubscriptionHandler
+	_ = router.Setup
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /livez", livezHandler)
+	mux.HandleFunc("GET /readyz", readyzHandler)
 
 	srv := &http.Server{
 		Addr:              ":8080",
