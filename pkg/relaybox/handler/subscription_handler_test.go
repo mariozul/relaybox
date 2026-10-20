@@ -561,3 +561,185 @@ func TestSubscriptionHandler_TenantFromContext(t *testing.T) {
 		t.Errorf("expected tenant from context to be used, got %q", capturedTenant)
 	}
 }
+
+// ============================================================================
+// Edge case tests for missing context key (not just empty value)
+// ============================================================================
+
+func TestExtractTenantID_NoTenantInContext(t *testing.T) {
+	t.Parallel()
+
+	// Request without any tenant in context.
+	req := httptest.NewRequest(http.MethodGet, "/v1/subscriptions", nil)
+	// Use bare context.Background() - no tenant key at all.
+	req = req.WithContext(context.Background())
+
+	tenantID := handler.ExtractTenantID(req)
+	if tenantID != "" {
+		t.Errorf("expected empty tenant ID for request without context key, got %q", tenantID)
+	}
+}
+
+func TestSubscriptionHandler_GetSubscription_NoTenantInContext(t *testing.T) {
+	t.Parallel()
+
+	mockSvc := newMockSubscriptionService()
+	h := handler.NewSubscriptionHandler(mockSvc)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/subscriptions/sub-123", nil)
+	req = req.WithContext(context.Background())
+
+	rec := httptest.NewRecorder()
+	h.HandleGetSubscription(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d when no tenant in context, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestSubscriptionHandler_GetSubscription_MissingID(t *testing.T) {
+	t.Parallel()
+
+	mockSvc := newMockSubscriptionService()
+	h := handler.NewSubscriptionHandler(mockSvc)
+
+	// Path without subscription ID after prefix.
+	req := httptest.NewRequest(http.MethodGet, "/v1/subscriptions/", nil)
+	req = req.WithContext(withTenantContext(req.Context(), "tenant-abc"))
+
+	rec := httptest.NewRecorder()
+	h.HandleGetSubscription(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d for missing subscription ID, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestSubscriptionHandler_DeleteSubscription_NoTenantInContext(t *testing.T) {
+	t.Parallel()
+
+	mockSvc := newMockSubscriptionService()
+	h := handler.NewSubscriptionHandler(mockSvc)
+
+	req := httptest.NewRequest(http.MethodDelete, "/v1/subscriptions/sub-123", nil)
+	req = req.WithContext(context.Background())
+
+	rec := httptest.NewRecorder()
+	h.HandleDeleteSubscription(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d when no tenant in context, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestSubscriptionHandler_DeleteSubscription_MissingID(t *testing.T) {
+	t.Parallel()
+
+	mockSvc := newMockSubscriptionService()
+	h := handler.NewSubscriptionHandler(mockSvc)
+
+	// Path without subscription ID after prefix.
+	req := httptest.NewRequest(http.MethodDelete, "/v1/subscriptions/", nil)
+	req = req.WithContext(withTenantContext(req.Context(), "tenant-abc"))
+
+	rec := httptest.NewRecorder()
+	h.HandleDeleteSubscription(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d for missing subscription ID, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestSubscriptionHandler_ListSubscriptions_NoTenantInContext(t *testing.T) {
+	t.Parallel()
+
+	mockSvc := newMockSubscriptionService()
+	h := handler.NewSubscriptionHandler(mockSvc)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/subscriptions", nil)
+	req = req.WithContext(context.Background())
+
+	rec := httptest.NewRecorder()
+	h.HandleListSubscriptions(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d when no tenant in context, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+// ============================================================================
+// extractPathParam edge case tests
+// ============================================================================
+
+func TestExtractPathParam_TrailingSlash(t *testing.T) {
+	t.Parallel()
+
+	// extractPathParam is unexported; we test it via the handler.
+	// Path with trailing slash should still extract the ID.
+	mockSvc := newMockSubscriptionService()
+	mockSvc.getFn = func(ctx context.Context, tenantID, id string) (*domain.Subscription, error) {
+		sub, _ := domain.NewSubscription(tenantID, "order.created", "https://example.com/webhook", "admin", time.Now().UTC())
+		sub.ID = id
+		return sub, nil
+	}
+	h := handler.NewSubscriptionHandler(mockSvc)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/subscriptions/sub-123/", nil)
+	req = req.WithContext(withTenantContext(req.Context(), "tenant-abc"))
+
+	rec := httptest.NewRecorder()
+	h.HandleGetSubscription(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status %d for trailing slash, got %d", http.StatusOK, rec.Code)
+	}
+}
+
+func TestExtractPathParam_WrongPrefix(t *testing.T) {
+	t.Parallel()
+
+	mockSvc := newMockSubscriptionService()
+	h := handler.NewSubscriptionHandler(mockSvc)
+
+	// Path without the expected prefix.
+	req := httptest.NewRequest(http.MethodGet, "/other-path/sub-123", nil)
+	req = req.WithContext(withTenantContext(req.Context(), "tenant-abc"))
+
+	rec := httptest.NewRecorder()
+	h.HandleGetSubscription(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d for wrong path prefix, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+// ============================================================================
+// DuplicateEvent error mapping test
+// ============================================================================
+
+func TestSubscriptionHandler_ErrorMapping_DuplicateEvent(t *testing.T) {
+	t.Parallel()
+
+	mockSvc := newMockSubscriptionService()
+	mockSvc.createFn = func(ctx context.Context, tenantID string, req service.CreateSubscriptionRequest) (*domain.Subscription, error) {
+		return nil, domain.ErrDuplicateEvent
+	}
+	h := handler.NewSubscriptionHandler(mockSvc)
+
+	body := map[string]string{
+		"event_type": "order.created",
+		"target_url": "https://example.com/webhook",
+	}
+	payload, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/subscriptions", bytes.NewReader(payload))
+	req = req.WithContext(withTenantContext(req.Context(), "tenant-abc"))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	h.HandleCreateSubscription(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Errorf("expected status %d for duplicate event, got %d", http.StatusConflict, rec.Code)
+	}
+}
