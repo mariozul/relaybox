@@ -63,3 +63,11 @@ var (
 		Message: "an unexpected internal server error occurred",
 	}
 )
+
+// ErrNotFound is returned when a requested resource cannot be found.
+// It is used by repository implementations to signal a missing entity,
+// distinct from ErrSubscriptionNotFound which is specific to subscriptions.
+var ErrNotFound = &DomainError{
+	Code:    "RELAYBOX_NOT_FOUND",
+	Message: "the requested resource was not found",
+}
