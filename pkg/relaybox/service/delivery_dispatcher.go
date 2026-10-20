@@ -44,6 +44,16 @@ func WithMaxRetries(n int) DeliveryDispatcherOption {
 	}
 }
 
+// WithEventRepository sets the event repository used by the dispatcher to
+// resolve tenant information for outbox entries (FIND-DISPATCHER-TENANTID-ST-08).
+// When provided, the dispatcher fetches the associated event to extract the
+// tenant ID for tenant-scoped subscription lookup (RULE-SEC-01).
+func WithEventRepository(repo EventRepository) DeliveryDispatcherOption {
+	return func(dd *DeliveryDispatcher) {
+		dd.eventRepo = repo
+	}
+}
+
 // DeliveryDispatcher is a background service that reads pending outbox entries
 // and delivers them to subscriber webhook endpoints. It uses a bounded worker
 // pool tied to context cancellation for graceful shutdown (FR-DEL-03,
@@ -54,12 +64,13 @@ func WithMaxRetries(n int) DeliveryDispatcherOption {
 //   - 5xx or timeout: Retry with exponential backoff, up to maxRetries.
 //   - 4xx: Mark as dead-lettered immediately.
 type DeliveryDispatcher struct {
-	outboxRepo     OutboxRepository
-	subRepo        SubscriptionRepository
-	webhookClient  WebhookClient
-	pollInterval   time.Duration
-	workerCount    int
-	maxRetries     int
+	outboxRepo    OutboxRepository
+	subRepo       SubscriptionRepository
+	eventRepo     EventRepository
+	webhookClient WebhookClient
+	pollInterval  time.Duration
+	workerCount   int
+	maxRetries    int
 }
 
 // OutboxRepository is the subset of repository.OutboxRepository used by the
@@ -70,11 +81,18 @@ type OutboxRepository interface {
 }
 
 // SubscriptionRepository is the subset of repository.SubscriptionRepository
-// used by the DeliveryDispatcher.
-// Note: For delivery, we need to find subscriptions by ID without tenant
-// scoping since the outbox entry already scopes the event to a tenant.
+// used by the DeliveryDispatcher. FindByID retrieves a subscription by ID,
+// scoped to the given tenant (RULE-SEC-01).
 type SubscriptionRepository interface {
 	FindByID(ctx context.Context, tenantID, id string) (*domain.Subscription, error)
+}
+
+// EventRepository is the subset of repository interfaces used by the
+// DeliveryDispatcher to resolve tenant information for outbox entries.
+type EventRepository interface {
+	// FindByID retrieves an event by its unique ID. Returns domain.ErrNotFound
+	// if the event does not exist.
+	FindByID(ctx context.Context, id string) (*domain.Event, error)
 }
 
 // NewDeliveryDispatcher creates a new DeliveryDispatcher with the given
@@ -154,7 +172,9 @@ func (dd *DeliveryDispatcher) Start(ctx context.Context) error {
 }
 
 // pollAndDispatch reads pending outbox entries and sends them to the worker
-// pool for processing.
+// pool for processing. If an EventRepository is configured, it resolves each
+// entry's associated event to extract the tenant ID for tenant-scoped
+// subscription lookup (RULE-SEC-01).
 func (dd *DeliveryDispatcher) pollAndDispatch(ctx context.Context, workCh chan<- workItem) {
 	entries, err := dd.outboxRepo.FindPending(ctx, dd.workerCount*10)
 	if err != nil {
@@ -172,15 +192,27 @@ func (dd *DeliveryDispatcher) pollAndDispatch(ctx context.Context, workCh chan<-
 			continue
 		}
 
-		// Resolve the subscription to get the target URL.
-		// We pass empty tenantID because FindByID in the repository package
-		// will enforce tenant scoping internally. For the delivery dispatcher,
-		// we trust the outbox entry's subscriptionID is already tenant-scoped.
-		sub, err := dd.subRepo.FindByID(ctx, "", entry.SubscriptionID)
+		// Resolve the tenant ID for subscription lookup.
+		// If an EventRepository is configured, use it to fetch the event
+		// and extract the tenant ID for proper tenant-scoped lookup
+		// (RULE-SEC-01, FIND-DISPATCHER-TENANTID-ST-08).
+		tenantID := dd.resolveTenantID(ctx, entry)
+		if tenantID == "" {
+			// EventRepository is not configured; continue with the entry
+			// but log a warning. This preserves backward compatibility.
+			slog.WarnContext(ctx, "event repository not configured, subscription lookup will not be tenant-scoped",
+				"entry_id", entry.ID,
+				"event_id", entry.EventID,
+			)
+		}
+
+		// Resolve the subscription using the resolved tenant ID.
+		sub, err := dd.subRepo.FindByID(ctx, tenantID, entry.SubscriptionID)
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to find subscription for outbox entry",
 				"entry_id", entry.ID,
 				"subscription_id", entry.SubscriptionID,
+				"tenant_id", tenantID,
 				"error", err,
 			)
 			continue
@@ -198,6 +230,27 @@ func (dd *DeliveryDispatcher) pollAndDispatch(ctx context.Context, workCh chan<-
 		}:
 		}
 	}
+}
+
+// resolveTenantID resolves the tenant ID for an outbox entry by fetching
+// the associated event. Returns an empty string if the EventRepository is
+// not configured or the event cannot be found.
+func (dd *DeliveryDispatcher) resolveTenantID(ctx context.Context, entry domain.OutboxEntry) string {
+	if dd.eventRepo == nil {
+		return ""
+	}
+
+	event, err := dd.eventRepo.FindByID(ctx, entry.EventID)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to find event for tenant resolution",
+			"entry_id", entry.ID,
+			"event_id", entry.EventID,
+			"error", err,
+		)
+		return ""
+	}
+
+	return event.TenantID
 }
 
 // processDelivery handles a single delivery attempt. It sends the webhook,

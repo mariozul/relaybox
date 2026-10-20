@@ -9,6 +9,9 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 // httpWebhookClient implements the WebhookClient interface (defined in the
@@ -35,8 +38,9 @@ var _ interface {
 } = (*httpWebhookClient)(nil)
 
 // SendWebhook sends an HTTP POST request to the specified URL with the given
-// headers and payload. It propagates ctx context.Context and returns the
-// *http.Response for status code inspection (FR-DEL-01, FR-DEL-02, RULE-RES-01).
+// headers and payload. It propagates ctx context.Context and OpenTelemetry
+// trace metadata via W3C Trace Context headers (FR-DEL-01, RULE-RES-01,
+// RULE-OBS-02). Returns the *http.Response for status code inspection.
 //
 // The caller is responsible for closing resp.Body after processing the
 // response (RULE-RES-03).
@@ -61,6 +65,13 @@ func (c *httpWebhookClient) SendWebhook(ctx context.Context, url string, headers
 	if req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
+
+	// RULE-OBS-02 / FR-DEL-01: Inject OpenTelemetry trace context into
+	// outbound HTTP headers for distributed tracing propagation. This uses
+	// the W3C Trace Context format (traceparent/tracestate headers).
+	propagator := otel.GetTextMapPropagator()
+	carrier := propagation.HeaderCarrier(req.Header)
+	propagator.Inject(ctx, carrier)
 
 	// Execute the request.
 	resp, err := c.httpClient.Do(req)

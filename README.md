@@ -14,7 +14,8 @@ Relaybox ingests events durably into an outbox, persists them in PostgreSQL, and
 ## Local development
 
 ```bash
-docker compose up -d      # Postgres
+podman compose up -d      # Postgres
 make test                 # go test -race -timeout 90s ./...
 make lint                 # golangci-lint run ./...
 make build
+```
