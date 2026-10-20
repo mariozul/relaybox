@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/mariozul/relaybox/pkg/relaybox/domain"
+	"github.com/mariozul/relaybox/pkg/relaybox/metrics"
 	"github.com/mariozul/relaybox/pkg/relaybox/service"
 )
 
@@ -82,18 +83,27 @@ type ingestEventRequest struct {
 //     - ErrUnauthorized -> 403 Forbidden
 //     - ErrInternal -> 500 Internal Server Error
 //  6. Writes the response as JSON with Content-Type: application/json.
+//  7. Records Prometheus metrics for request duration (RULE-OBS-03).
 func (h *IngestionHandler) HandleIngestEvent(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
 	// Step 1: Extract tenant identity from context (RULE-SEC-01)
 	tenantID, err := extractTenantID(r.Context())
 	if err != nil {
 		writeError(w, http.StatusForbidden, domain.ErrUnauthorized)
+		metrics.RecordHTTPDuration("POST /v1/events", r.Method, http.StatusForbidden, time.Since(start))
 		return
 	}
 
 	// Step 2: Decode request body
 	var req ingestEventRequest
 	if r.Body == nil {
+		slog.WarnContext(r.Context(), "nil request body",
+			"component", "ingestion_handler",
+			"endpoint", "POST /v1/events",
+		)
 		writeError(w, http.StatusBadRequest, domain.ErrInvalidEventPayload)
+		metrics.RecordHTTPDuration("POST /v1/events", r.Method, http.StatusBadRequest, time.Since(start))
 		return
 	}
 
@@ -103,32 +113,49 @@ func (h *IngestionHandler) HandleIngestEvent(w http.ResponseWriter, r *http.Requ
 			"component", "ingestion_handler",
 		)
 		writeError(w, http.StatusBadRequest, domain.ErrInvalidEventPayload)
+		metrics.RecordHTTPDuration("POST /v1/events", r.Method, http.StatusBadRequest, time.Since(start))
 		return
 	}
 
 	// Step 3: Validate required fields
 	// event_type must be non-empty
 	if req.EventType == "" {
+		slog.WarnContext(r.Context(), "missing event_type",
+			"component", "ingestion_handler",
+		)
 		writeError(w, http.StatusBadRequest, domain.ErrInvalidEventPayload)
+		metrics.RecordHTTPDuration("POST /v1/events", r.Method, http.StatusBadRequest, time.Since(start))
 		return
 	}
 
 	// payload must be present and non-null (valid JSON value)
 	// json.RawMessage("null") has len 4, json.RawMessage(nil) means absent
 	if len(req.Payload) == 0 || bytes.Equal(req.Payload, []byte("null")) {
+		slog.WarnContext(r.Context(), "missing or null payload",
+			"component", "ingestion_handler",
+		)
 		writeError(w, http.StatusBadRequest, domain.ErrInvalidEventPayload)
+		metrics.RecordHTTPDuration("POST /v1/events", r.Method, http.StatusBadRequest, time.Since(start))
 		return
 	}
 
 	// dedup_key must be non-empty
 	if req.DedupKey == "" {
+		slog.WarnContext(r.Context(), "missing dedup_key",
+			"component", "ingestion_handler",
+		)
 		writeError(w, http.StatusBadRequest, domain.ErrInvalidEventPayload)
+		metrics.RecordHTTPDuration("POST /v1/events", r.Method, http.StatusBadRequest, time.Since(start))
 		return
 	}
 
 	// Validate that payload is valid JSON
 	if !json.Valid(req.Payload) {
+		slog.WarnContext(r.Context(), "invalid JSON payload",
+			"component", "ingestion_handler",
+		)
 		writeError(w, http.StatusBadRequest, domain.ErrInvalidEventPayload)
+		metrics.RecordHTTPDuration("POST /v1/events", r.Method, http.StatusBadRequest, time.Since(start))
 		return
 	}
 
@@ -143,11 +170,24 @@ func (h *IngestionHandler) HandleIngestEvent(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		// Step 5: Map domain errors to HTTP status codes (RULE-ARCH-03)
 		statusCode := mapDomainErrorToHTTPStatus(err)
+		slog.WarnContext(r.Context(), "ingestion failed",
+			"component", "ingestion_handler",
+			"error", err.Error(),
+			"status_code", statusCode,
+		)
 		writeError(w, statusCode, err)
+		metrics.RecordHTTPDuration("POST /v1/events", r.Method, statusCode, time.Since(start))
 		return
 	}
 
 	// Step 6: Write success response
+	slog.InfoContext(r.Context(), "event ingested successfully",
+		"component", "ingestion_handler",
+		"event_id", resp.EventID,
+		"tenant_id", tenantID,
+		"event_type", svcReq.EventType,
+	)
+	metrics.RecordHTTPDuration("POST /v1/events", r.Method, http.StatusOK, time.Since(start))
 	writeJSON(w, http.StatusOK, map[string]string{
 		"event_id": resp.EventID,
 	})
@@ -183,42 +223,5 @@ func mapDomainErrorToHTTPStatus(err error) int {
 		return http.StatusNotFound
 	default:
 		return http.StatusInternalServerError
-	}
-}
-
-// writeError writes a structured JSON error response with the given HTTP
-// status code and domain error. The response body contains "code" and
-// "message" fields extracted from the domain error (RULE-ARCH-03).
-func writeError(w http.ResponseWriter, statusCode int, err error) {
-	// Extract code and message from domain error
-	code := "RELAYBOX_INTERNAL_ERROR"
-	message := "an unexpected internal server error occurred"
-
-	var domainErr *domain.DomainError
-	if errors.As(err, &domainErr) {
-		code = domainErr.Code
-		message = domainErr.Message
-	}
-
-	writeJSON(w, statusCode, map[string]string{
-		"code":    code,
-		"message": message,
-	})
-}
-
-// writeJSON writes a JSON response with the given HTTP status code and
-// payload. It sets the Content-Type header to application/json.
-func writeJSON(w http.ResponseWriter, statusCode int, payload interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-
-	if payload != nil {
-		if err := json.NewEncoder(w).Encode(payload); err != nil {
-			slog.Error("failed to encode JSON response",
-				"error", err,
-				"component", "ingestion_handler",
-				"status_code", statusCode,
-			)
-		}
 	}
 }
